@@ -21,6 +21,16 @@ BROADCAST_OP(madd, +)
 BROADCAST_OP(msub, -)
 BROADCAST_OP(mmult, *)
 
+#define FOR_ROWS(t) \
+    for (int i = 0; i < (t)->shape[0]; i++) \
+        for (int j = 0; j < (t)->shape[1]; j++) \
+            for (int k = 0; k < (t)->shape[2]; k++) \
+                 for (int base = base_idx(t, i, j, k), _done = 0; !_done; _done = 1)
+
+static inline int base_idx(Tensor *t, int i, int j, int k) {
+    return i * t->shape[1] * t->shape[2] * t->shape[3] + j * t->shape[2] * t->shape[3] + k * t->shape[3];
+}
+
 void mscal(Tensor *x, float s, Tensor *out) {
     for (size_t i = 0; i < tsize(x); i++)
         out->data[i] = x->data[i] * s;
@@ -145,46 +155,29 @@ void matmul_bt(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out) {
 }
 
 void softmax(Tensor *in, Tensor *out) {
-    int batch = in->shape[0];
-    int nheads = in->shape[1];
-    int rows = in->shape[2];
-    int cols  = in->shape[3];
-    float acc;
-    float max;
-    size_t base;
-    for (int i = 0; i < batch; i++) {
-        for (int j = 0; j < nheads; j++) {
-            for (int k = 0; k < rows; k++) {
-                base = i * nheads * rows * cols + j * rows * cols + k * cols;
-                max = -FLT_MAX;
-                for (int l = 0; l < cols; l++) {
-                    if (in->data[base + l] > max) max = in->data[base + l];
-                }
-                acc = 0;
-                for (int l = 0; l < cols; l++) {
-                    out->data[base + l] = expf(in->data[base + l] - max);
-                    acc += out->data[base + l];
-                }
-                acc = 1.0 / acc;
-                for (int l = 0; l < cols; l++) {
-                    out->data[base + l] *= acc;
-                }
-            }
+    FOR_ROWS(in) {
+        float max = -FLT_MAX;
+        for (int col = 0; col < in->shape[3]; col++) {
+            if (in->data[base + col] > max) max = in->data[base + col];
+        }
+
+        float acc = 0;
+        for (int col = 0; col < in->shape[3]; col++) {
+            out->data[base + col] = expf(in->data[base + col] - max);
+            acc += out->data[base + col];
+        }
+
+        acc = 1.0 / acc;
+        for (int col = 0; col < in->shape[3]; col++) {
+            out->data[base + col] *= acc;
         }
     }
 }
 
 void triu_mask(Tensor *in, Tensor *out, float val) {
-    size_t b = tsize(in) / in->shape[0];
-    int seq = in->shape[2];
-    for (int i = 0; i < in->shape[0]; i++) {
-        for (int j = 0; j < in->shape[1]; j++) {
-            for (int k = 0; k < seq; k++) {
-                int base = i * b + j * seq * seq + k * seq;
-                for (int l = k + 1; l < seq; l++) {
-                    out->data[base + l] = val;
-                }
-            }
+    FOR_ROWS(in) {
+        for (int col = k + 1; col < in->shape[3]; col++) {
+            out->data[base + col] = val;
         }
     }
 }
@@ -210,44 +203,41 @@ void gelu_grad(Tensor *dG, Tensor *in, Tensor *out) {
 }
 
 void lnstats(Tensor *in, Tensor *mean, Tensor *var, float eps) {
-    float x, acc, acc2, delta, delta2;
-    int seq = in->shape[2];
-    int dmodel = in->shape[3];
-    for (int i = 0; i < in->shape[0]; i++) {
-        for (int j = 0; j < seq; j++) {
-            acc = 0;
-            acc2 = 0;
-            delta = 0;
-            delta2 = 0;
-            for (int k = 0; k < dmodel; k++) {
-                x = in->data[i * seq * dmodel + j * dmodel + k];
-                delta = x - acc;
-                acc += delta / (k + 1);
-                delta2 = x - acc;
-                acc2 += delta * delta2;
-            }
-            mean->data[i * seq + j] = acc;
-            var->data[i * seq + j] = 1.0f / sqrtf(acc2 / dmodel + eps);
+    FOR_ROWS(in) {
+        float x = 0, acc = 0, acc2 = 0, delta = 0, delta2 = 0;
+        for (int col = 0; col < in->shape[3]; col++) {
+            x = in->data[base + col];
+            delta = x - acc;
+            acc += delta / (col + 1);
+            delta2 = x - acc;
+            acc2 += delta * delta2;
+        }
+        mean->data[j * in->shape[2] + k] = acc;
+        var->data[j * in->shape[2] + k] = 1.0f / sqrtf(acc2 / in->shape[3] + eps);
+    }
+}
+
+void rms(Tensor *in, Tensor *gamma, Tensor *out, float eps) {
+    FOR_ROWS(in) {
+        double acc = 0.0;
+        for (int col = 0; col < in->shape[3]; col++) {
+            acc += (double)(in->data[base + col] * in->data[base + col]);
+        }
+        float inv_rms = 1.0f / sqrtf((float)acc / in->shape[3] + eps);
+        for (int col = 0; col < in->shape[3]; col++) {
+            out->data[base + col] = in->data[base + col] * gamma->data[col] * inv_rms;
         }
     }
 }
 
 void soft_grad(Tensor *dS, Tensor *S, Tensor *out) {
-    int d = S->shape[0];
-    int h = S->shape[1];
-    int seq = S->shape[2];
-    for (int i = 0; i < d; i++) {
-        for (int j = 0; j < h; j++) {
-            for (int k = 0; k < seq; k++) {
-                float acc = 0;
-                int base = i * h * seq * seq + j * seq * seq + k * seq;
-                for (int l = 0; l < seq; l++) {
-                    acc += S->data[base + l] * dS->data[base + l];
-                }
-                for (int l = 0; l < seq; l ++) {
-                    out->data[base + l] = S->data[base + l] * (dS->data[base + l] - acc);
-                }
-            }
+    FOR_ROWS(S) {
+        float acc = 0;
+        for (int col = 0; col < S->shape[3]; col++) {
+            acc += S->data[base + col] * dS->data[base + col];
+        }
+        for (int col = 0; col < S->shape[3]; col++) {
+            out->data[base + col] = S->data[base + col] * (dS->data[base + col] - acc);
         }
     }
 }
@@ -259,52 +249,36 @@ void batch_mean(Tensor *in, Tensor *out) {
         if (in->shape[i] != out->shape[i]) break;
         s *= in->shape[i];
     }
-    for (int i = 0; i < in->shape[0]; i++) {
-        for (int j = 0; j < in->shape[1]; j++) {
-            for (int k = 0; k < in->shape[2]; k++) {
-                int base = i * in->shape[1] * in->shape[2] * in->shape[3] + j * in->shape[2] * in->shape[3] + k * in->shape[3];
-                for (int l = 0; l < in->shape[3]; l++) {
-                    out->data[base % s + l] += in->data[base + l];
-                }
-            }
+    FOR_ROWS(in) {
+        for (int col = 0; col < in->shape[3]; col++) {
+            out->data[base % s + col] += in->data[base + col];
         }
     }
     mscal(out, 1.0f * s / tsize(in), out);
 }
 
 void ln_grad(Tensor *dX, Tensor *safevar, Tensor *X, Tensor *out) {
-    for (int i = 0; i < dX->shape[0]; i++) {
-        for (int j = 0; j < dX->shape[2]; j++) {
-            int base = i * dX->shape[2] * dX->shape[3] + j * dX->shape[3];
-            float acc = 0, acc2 = 0;
-            float var = safevar->data[i * dX->shape[2] + j];
-            for (int k = 0; k < dX->shape[3]; k++) {
-                acc += dX->data[base + k];
-                acc2 += dX->data[base + k] * X->data[base + k];
-            }
-            acc /= X->shape[3];
-            acc2 /= X->shape[3];
-            for (int k = 0; k < dX->shape[3]; k++) {
-                float cur = X->data[base + k];
-                float dcur = dX->data[base + k];
-                out->data[base + k] = var * (dcur - acc - cur * acc2);
-            }
+    FOR_ROWS(dX) {
+        float acc = 0, acc2 = 0;
+        float var = safevar->data[j * dX->shape[2] + k];
+        for (int col = 0; col < dX->shape[3]; col++) {
+            acc += dX->data[base + col];
+            acc2 += dX->data[base + col] * X->data[base + col];
+        }
+        acc /= X->shape[3];
+        acc2 /= X->shape[3];
+        for (int col = 0; col < dX->shape[3]; col++) {
+            out->data[base + col] = var * (dX->data[base + col] - acc - X->data[base + col] * acc2);
         }
     }
 }
 
 float crossentropy(Tensor *X, Tensor *y) {
     float loss = 0;
-
-    for (int i = 0; i < X->shape[0]; i++) {
-        for (int j = 0; j < X->shape[1]; j++) {
-            for (int k = 0; k < X->shape[2]; k++) {
-                int base = i * X->shape[1] * X->shape[2] * X->shape[3] + j * X->shape[2] * X->shape[3] + k * X->shape[3];
-                int l = -1;
-                while (y->data[base + ++l] == 0);
-                loss -= logf(X->data[base + l] + 1e-06);
-            }
-        }
+    FOR_ROWS(X) {
+        int col = -1;
+        while (y->data[base + ++col] == 0);
+        loss -= logf(X->data[base + col] + 1e-06);
     }
     return loss / (X->shape[0] * X->shape[1] * X->shape[2]);
 }
