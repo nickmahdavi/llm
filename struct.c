@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -47,6 +48,16 @@ Tensor *palloct(Pool *pool, int d0, int d1, int d2, int d3) {
     return tensor;
 }
 
+Tensor *palloctQ(Pool *pool, int d0, int d1, int d2, int d3) {
+    printf("Enter\n");
+    Tensor *tensor = (Tensor *) palloc(pool, sizeof(Tensor));
+    printf("Allocated\n");
+    tinit(pool, tensor, d0, d1, d2, d3, NONE);
+    printf("Initialized\n");
+    printf("First: %f\n", tensor->data[0]);
+    return tensor;
+}
+
 void fill(float *buf, size_t n, float val) {
     if (n == 0) {
         return;
@@ -91,7 +102,6 @@ void fill_kaiming(float *buf, size_t n, int fan_in) {
     for (size_t i = 0; i < n; i++) buf[i] = (drand48() - 0.5f) * limit;
 }
 
-
 void tinit(Pool *pool, Tensor *t, int d0, int d1, int d2, int d3, init_t init_type) {
     size_t size = (size_t) d0 * d1 * d2 * d3;
     t->data = (float *)palloc(pool, sizeof(float) * size);
@@ -117,6 +127,8 @@ void tinit(Pool *pool, Tensor *t, int d0, int d1, int d2, int d3, init_t init_ty
             fill_gaussian(t->data, size, 0, 0.01);
             break;
         case NONE:
+            break;
+        default:
             break;
     }
 }

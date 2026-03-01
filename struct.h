@@ -12,36 +12,36 @@ typedef struct {
 
 typedef struct { Tensor WQ, WK, WV, WO; } AttnWeights;
 typedef struct { Tensor W1, W2, b1, b2; } FFWeights;
-typedef struct { Tensor gamma, beta; } LNWeights;
+typedef struct { Tensor gamma; } RMSWeights;
 
 typedef struct { Tensor X, Q, K, V, S, heads; } AttnActivations;
 typedef struct { Tensor X, h, hg; } FFActivations;
-typedef struct { Tensor mean, safevar, xhat; } LNActivations;
+typedef struct { Tensor safevar, xhat; } RMSActivations;
 
 typedef struct {
     AttnWeights attn;
     FFWeights ff;
-    LNWeights ln1;
-    LNWeights ln2;
+    RMSWeights rms1;
+    RMSWeights rms2;
 } DecoderWeights;
 
 typedef struct {
     AttnActivations attn;
     FFActivations ff;
-    LNActivations ln1;
-    LNActivations ln2;
+    RMSActivations rms1;
+    RMSActivations rms2;
     Tensor res1, res2;
 } DecoderActivations;
 
 typedef struct {
     Tensor token_emb, pos_emb;
     DecoderWeights *layers;
-    LNWeights last_ln;
+    RMSWeights last_rms;
 } Weights;
 
 typedef struct {
     DecoderActivations *layers;
-    LNActivations last_ln;
+    RMSActivations last_rms;
     Tensor model_in, model_out, logits, probs;
 } Activations;
 
@@ -89,5 +89,7 @@ void concat_heads(Tensor *in, Tensor *out, Pool *pool);
 void proj_heads(Tensor *x, Tensor *y, Tensor *out, int nheads, Pool *pool);
 
 void tprint(Tensor *in);
+
+Tensor *palloctQ(Pool *pool, int d0, int d1, int d2, int d3);
 
 #endif

@@ -1,6 +1,8 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <float.h>
+#include <arm_neon.h>
 #include <string.h>
 #include "struct.h"
 
@@ -39,6 +41,13 @@ void mscal(Tensor *x, float s, Tensor *out) {
 void step(Tensor *x, Tensor *grad, float eta) {
     for (size_t i = 0; i < tsize(x); i++) \
         x->data[i] -= grad->data[i] * eta;
+}
+
+void pack(float *in, float *out, int d0, int d1, int s) {
+    for (int i = 0; i < d1; i++) {
+        for (int j = 0; j < d1; j++) {
+        }
+    }
 }
 
 void matmul(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out) {
@@ -154,6 +163,90 @@ void matmul_bt(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out) {
     }
 }
 
+
+void matmul_bto(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out) {
+    int xbatch = x->shape[0] * x->shape[1];
+    int ybatch = y->shape[0] * y->shape[1];
+    int y_do_batch = (ybatch != 1);
+    int xsize = x->shape[2] * x->shape[3];
+    int ysize = y->shape[2] * y->shape[3];
+    int osize = x->shape[2] * y->shape[2];
+    int ii_max = x->shape[2];
+    int jj_max = y->shape[2];
+    int kk_max = x->shape[3];
+    float acc[TILE][TILE];
+    for (int b = 0; b < xbatch; b++) {
+        for (int ii = 0; ii < ii_max; ii += TILE) {
+            int i_max = ii + TILE > ii_max ? ii_max : ii + TILE;
+            for (int jj = 0; jj < jj_max; jj += TILE) {
+                int j_max = jj + TILE > jj_max ? jj_max : jj + TILE;
+                memset(acc, 0, sizeof(acc));
+                for (int kk = 0; kk < kk_max; kk += TILE) {
+                    int k_max = kk + TILE > kk_max ? kk_max : kk + TILE;
+                    for (int i = ii; i < i_max; i++) {
+                        for (int j = jj; j < j_max; j++) {
+                            for (int k = kk; k < k_max; k++) {
+                                printf("%d %d %d\n", i, j, k);
+                                acc[i - ii][j - jj] += x->data[b * xsize + i * kk_max + k] * y->data[b * ysize * y_do_batch + j * kk_max + k];
+                            }
+                        }
+                    }
+                }
+                for (int i = ii; i < i_max; i ++) {
+                    for (int j = jj; j < j_max; j++) {
+                        printf("%d %d\n", i, j);
+                        printf("%f\n",  acc[i - ii][j - jj]);
+                        out->data[b * osize + i * jj_max + j] = acc[i - ii][j - jj];
+                    }
+                }
+            }
+        }
+    }
+}
+
+void matmul_ato(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out, Tensor *probe) {
+    int xbatch = x->shape[0] * x->shape[1];
+    int ybatch = y->shape[0] * y->shape[1];
+    int y_do_batch = (ybatch != 1);
+    int xsize = x->shape[2] * x->shape[3];
+    int ysize = y->shape[2] * y->shape[3];
+    int osize = x->shape[3] * y->shape[3];
+    int ii_max = x->shape[3];
+    int jj_max = y->shape[3];
+    int kk_max = x->shape[2];
+    float acc[TILE][TILE];
+    for (int b = 0; b < xbatch; b++) {
+        for (int ii = 0; ii < ii_max; ii += TILE) {
+            int i_max = ii + TILE > ii_max ? ii_max : ii + TILE;
+            for (int jj = 0; jj < jj_max; jj += TILE) {
+                int j_max = jj + TILE > jj_max ? jj_max : jj + TILE;
+                memset(acc, 0, sizeof(acc));
+                for (int kk = 0; kk < kk_max; kk += TILE) {
+                    int k_max = kk + TILE > kk_max ? kk_max : kk + TILE;
+                    for (int i = ii; i < i_max; i++) {
+                        for (int k = kk; k < k_max; k++) {
+                            float a = x->data[b * xsize + k * ii_max + i];
+                            for (int j = jj; j < j_max; j++) {
+                                printf("%d/%d %d/%d %d/%d %p %p %p %p\n", i, i_max, j, j_max, k, k_max, probe->data, x->data + (b * xsize + k * ii_max + i), y->data + (b * ysize * y_do_batch + k * jj_max + j), acc[i-ii] + (j-jj));
+                                printf("%f", (float)(uintptr_t)probe->data[1]);
+                                acc[i - ii][j - jj] += a * y->data[b * ysize * y_do_batch + k * jj_max + j];
+                            }
+                        }
+                    }
+                }
+                for (int i = ii; i < i_max; i ++) {
+                    for (int j = jj; j < j_max; j++) {
+                        printf("%d/%d %d/%d %p %p\n", i, i_max, j, j_max, probe->data, out->data + (b * osize + i * jj_max + j));
+                        printf("%f %f %f %f\n", probe->data[0], probe->data[1], probe->data[2], probe->data[3]);
+                        out->data[b * osize + i * jj_max + j] = acc[i - ii][j - jj];
+                        printf("%f\n", probe->data[0]);
+                    }
+                }
+            }
+        }
+    }
+}
+
 void softmax(Tensor *in, Tensor *out) {
     FOR_ROWS(in) {
         float max = -FLT_MAX;
@@ -212,32 +305,21 @@ void lnstats(Tensor *in, Tensor *mean, Tensor *var, float eps) {
             delta2 = x - acc;
             acc2 += delta * delta2;
         }
-        mean->data[j * in->shape[2] + k] = acc;
-        var->data[j * in->shape[2] + k] = 1.0f / sqrtf(acc2 / in->shape[3] + eps);
+        mean->data[i * in->shape[2] + k] = acc;
+        var->data[i * in->shape[2] + k] = 1.0f / sqrtf(acc2 / in->shape[3] + eps);
     }
 }
 
-void rms(Tensor *in, Tensor *gamma, Tensor *out, float eps) {
+void rms(Tensor *in, Tensor *safevar, Tensor *out, float eps) {
     FOR_ROWS(in) {
         double acc = 0.0;
         for (int col = 0; col < in->shape[3]; col++) {
             acc += (double)(in->data[base + col] * in->data[base + col]);
         }
         float inv_rms = 1.0f / sqrtf((float)acc / in->shape[3] + eps);
+        safevar->data[i * in->shape[2] + k] = inv_rms;
         for (int col = 0; col < in->shape[3]; col++) {
-            out->data[base + col] = in->data[base + col] * gamma->data[col] * inv_rms;
-        }
-    }
-}
-
-void soft_grad(Tensor *dS, Tensor *S, Tensor *out) {
-    FOR_ROWS(S) {
-        float acc = 0;
-        for (int col = 0; col < S->shape[3]; col++) {
-            acc += S->data[base + col] * dS->data[base + col];
-        }
-        for (int col = 0; col < S->shape[3]; col++) {
-            out->data[base + col] = S->data[base + col] * (dS->data[base + col] - acc);
+            out->data[base + col] = in->data[base + col] * inv_rms;
         }
     }
 }
@@ -257,10 +339,22 @@ void batch_mean(Tensor *in, Tensor *out) {
     mscal(out, 1.0f * s / tsize(in), out);
 }
 
+void soft_grad(Tensor *dS, Tensor *S, Tensor *out) {
+    FOR_ROWS(S) {
+        float acc = 0;
+        for (int col = 0; col < S->shape[3]; col++) {
+            acc += S->data[base + col] * dS->data[base + col];
+        }
+        for (int col = 0; col < S->shape[3]; col++) {
+            out->data[base + col] = S->data[base + col] * (dS->data[base + col] - acc);
+        }
+    }
+}
+
 void ln_grad(Tensor *dX, Tensor *safevar, Tensor *X, Tensor *out) {
     FOR_ROWS(dX) {
         float acc = 0, acc2 = 0;
-        float var = safevar->data[j * dX->shape[2] + k];
+        float var = safevar->data[i * dX->shape[2] + k];
         for (int col = 0; col < dX->shape[3]; col++) {
             acc += dX->data[base + col];
             acc2 += dX->data[base + col] * X->data[base + col];
@@ -269,6 +363,20 @@ void ln_grad(Tensor *dX, Tensor *safevar, Tensor *X, Tensor *out) {
         acc2 /= X->shape[3];
         for (int col = 0; col < dX->shape[3]; col++) {
             out->data[base + col] = var * (dX->data[base + col] - acc - X->data[base + col] * acc2);
+        }
+    }
+}
+
+void rms_grad(Tensor *dX, Tensor *safevar, Tensor *X, Tensor *out) {
+    FOR_ROWS(dX) {
+        float acc = 0;
+        float var = safevar->data[i * dX->shape[2] + k];
+        for (int col = 0; col < dX->shape[3]; col++) {
+            acc += dX->data[base + col] * X->data[base + col];
+        }
+        acc /= X->shape[3];
+        for (int col = 0; col < dX->shape[3]; col++) {
+            out->data[base + col] = var * (dX->data[base + col] - acc);
         }
     }
 }

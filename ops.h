@@ -15,6 +15,8 @@ void mscal(Tensor *x, float s, Tensor *out);
 void matmul(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out);
 void matmul_at(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out);
 void matmul_bt(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out);
+void matmul_bto(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out);
+void matmul_ato(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out, Tensor *test);
 void softmax(Tensor *in, Tensor *out);
 void soft_grad(Tensor *dS, Tensor *S, Tensor *out);
 void triu_mask(Tensor *in, Tensor *out, float val);
@@ -22,8 +24,10 @@ void gelu(Tensor *in, Tensor *out);
 void lnstats(Tensor *in, Tensor *mean, Tensor *var, float eps);
 void batch_mean(Tensor *in, Tensor *out);
 void gelu_grad(Tensor *dG, Tensor *in, Tensor *out);
-void ln_grad(Tensor *dX, Tensor *safevar, Tensor *X, Tensor *out);
+void rms_grad(Tensor *dX, Tensor *safevar, Tensor *X, Tensor *out);
 void step(Tensor *x, Tensor *grad, float eta);
 float crossentropy(Tensor *X, Tensor *y);
+void rms_grad(Tensor *dX, Tensor *safevar, Tensor *X, Tensor *out);
+void rms(Tensor *in, Tensor *safevar, Tensor *out, float eps);
 
 #endif

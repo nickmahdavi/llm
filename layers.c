@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include "struct.h"
@@ -32,19 +33,16 @@ void ffn(Tensor *in, Tensor *out, FFWeights *weights, FFActivations *acts, Confi
     madd(out, &weights->b2, out);
 }
 
-void layernorm(Tensor *in, Tensor *out, LNWeights *weights, LNActivations *acts, Config *config) {
-    lnstats(in, &acts->mean, &acts->safevar, config->eps);
-    msub(in, &acts->mean, &acts->xhat);
-    mmult(&acts->xhat, &acts->safevar, &acts->xhat);
+void rmsnorm(Tensor *in, Tensor *out, RMSWeights *weights, RMSActivations *acts, Config *config) {
+    rms(in, &acts->safevar, &acts->xhat, config->eps);
     mmult(&acts->xhat, &weights->gamma, out);
-    madd(out, &weights->beta, out);
 }
 
 void decoder(Tensor **in, DecoderWeights *weights, DecoderActivations *acts, Config *config) {
-    layernorm(*in, &acts->attn.X, &weights->ln1, &acts->ln1, config);
+    rmsnorm(*in, &acts->attn.X, &weights->rms1, &acts->rms1, config);
     attention(&acts->attn.X, &acts->res1, &weights->attn, &acts->attn, config);
     madd(*in, &acts->res1, &acts->res1);
-    layernorm(&acts->res1, &acts->ff.X, &weights->ln2, &acts->ln2, config);
+    rmsnorm(&acts->res1, &acts->ff.X, &weights->rms2, &acts->rms2, config);
     ffn(&acts->ff.X, &acts->res2, &weights->ff, &acts->ff, config);
     madd(&acts->res1, &acts->res2, &acts->res2);
     *in = &acts->res2;
@@ -66,7 +64,7 @@ void forward(Tensor *in, Weights *weights, Activations *acts, Config *config) {
         DecoderActivations *d_acts = &acts->layers[i];
         decoder(&ptr, d_weights, d_acts, config);
     }
-    layernorm(ptr, &acts->model_out, &weights->last_ln, &acts->last_ln, config);
+    rmsnorm(ptr, &acts->model_out, &weights->last_rms, &acts->last_rms, config);
     unembedding(&acts->model_out, &acts->logits, &weights->token_emb, config);
     softmax(&acts->logits, &acts->probs);
 }

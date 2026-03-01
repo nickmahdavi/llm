@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "struct.h"
 
 #define b config->max_batch
@@ -39,22 +40,20 @@ void init_ff_weights(FFWeights *weights, Config *config) {
     INIT_W(b2, 1, 1, 1, d, ZERO);
 }
 
-void init_ln_acts(LNActivations *acts, Config *config) {
-    INIT_A(mean, b, 1, 1, s);
+void init_rms_acts(RMSActivations *acts, Config *config) {
     INIT_A(safevar, b, 1, 1, s);
     INIT_A(xhat, b, 1, s, d);
 }
 
-void init_ln_weights(LNWeights *weights, Config *config) {
+void init_rms_weights(RMSWeights *weights, Config *config) {
     INIT_W(gamma, 1, 1, 1, d, ONE);
-    INIT_W(beta, 1, 1, 1, d, ZERO);
 }
 
 void init_decoder_acts(DecoderActivations *acts, Config *config) {
     init_attn_acts(&acts->attn, config);
     init_ff_acts(&acts->ff, config);
-    init_ln_acts(&acts->ln1, config);
-    init_ln_acts(&acts->ln2, config);
+    init_rms_acts(&acts->rms1, config);
+    init_rms_acts(&acts->rms2, config);
     INIT_A(res1, b, 1, s, d);
     INIT_A(res2, b, 1, s, d);
 }
@@ -62,8 +61,8 @@ void init_decoder_acts(DecoderActivations *acts, Config *config) {
 void init_decoder_weights(DecoderWeights *weights, Config *config) {
     init_attn_weights(&weights->attn, config);
     init_ff_weights(&weights->ff, config);
-    init_ln_weights(&weights->ln1, config);
-    init_ln_weights(&weights->ln2, config);
+    init_rms_weights(&weights->rms1, config);
+    init_rms_weights(&weights->rms2, config);
 }
 
 Activations *init_acts(Config *config) {
@@ -74,7 +73,7 @@ Activations *init_acts(Config *config) {
         DecoderActivations *d_acts = &acts->layers[i];
         init_decoder_acts(d_acts, config);
     }
-    init_ln_acts(&acts->last_ln, config);
+    init_rms_acts(&acts->last_rms, config);
     INIT_A(model_out, b, 1, s, d);
     INIT_A(logits, b, 1, s, v);
     INIT_A(probs, b, 1, s, v);
@@ -92,7 +91,7 @@ Weights *init_weights(Config *config) {
         DecoderWeights *d_weights = &weights->layers[i];
         init_decoder_weights(d_weights, config);
     }
-    init_ln_weights(&weights->last_ln, config);
+    init_rms_weights(&weights->last_rms, config);
     return weights;
 }
 
