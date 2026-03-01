@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -42,20 +43,33 @@ void prollback(Pool *pool, size_t idx) {
 
 Tensor *palloct(Pool *pool, int d0, int d1, int d2, int d3) {
     Tensor *tensor = (Tensor *) palloc(pool, sizeof(Tensor));
-    tinit(pool, tensor, d0, d1, d2, d3, 0);
+    tinit(pool, tensor, d0, d1, d2, d3, NONE);
     return tensor;
 }
 
-Tensor *palloctw(Pool *pool, int d0, int d1, int d2, int d3) {
-    Tensor *tensor = (Tensor *) palloc(pool, sizeof(Tensor));
-    tinit(pool, tensor, d0, d1, d2, d3, 1);
-    return tensor;
+void fill(float *buf, size_t n, float val) {
+    if (n == 0) {
+        return;
+    } else if (n < 64) {
+        for (size_t i = 0; i < n; i++) buf[i] = val;
+    } else {
+        buf[0] = val;
+        int chunk_size = 1;
+        float *cur = buf + 1;
+        while (cur + chunk_size < buf + n) {
+            memcpy(cur, buf, sizeof(float) * chunk_size);
+            cur += chunk_size;
+            chunk_size *= 2;
+        }
+        memcpy(cur, buf, sizeof(float) * (buf + n - cur));
+    }
 }
 
-void fill_randn(float *buf, size_t n, float mean, float std) {
+void fill_gaussian(float *buf, size_t n, float mean, float std) {
     for (size_t i = 0; i + 1 < n; i += 2) {
-        float u1 = (float)drand48();
-        float u2 = (float)drand48();
+        float u1 = 0.0f, u2 = 0.0f;
+        while (u1 == 0.0f) u1 = (float)drand48();
+        while (u2 == 0.0f) u2 = (float)drand48();
         float r = sqrt(-2.0 * log(u1));
         buf[i] = mean + std * r * cos(2.0 * M_PI * u2);
         buf[i + 1] = mean + std * r * sin(2.0 * M_PI * u2);
@@ -67,15 +81,43 @@ void fill_randn(float *buf, size_t n, float mean, float std) {
     }
 }
 
-void tinit(Pool *pool, Tensor *t, int d0, int d1, int d2, int d3, int init_weights) {
+void fill_xavier(float *buf, size_t n, int fan_in, int fan_out) {
+    float limit = 2.0f * sqrtf(6.0f / (fan_in + fan_out));
+    for (size_t i = 0; i < n; i++) buf[i] = (drand48() - 0.5f) * limit;
+}
+
+void fill_kaiming(float *buf, size_t n, int fan_in) {
+    float limit = sqrtf(6.0f / fan_in);
+    for (size_t i = 0; i < n; i++) buf[i] = (drand48() - 0.5f) * limit;
+}
+
+
+void tinit(Pool *pool, Tensor *t, int d0, int d1, int d2, int d3, init_t init_type) {
     size_t size = (size_t) d0 * d1 * d2 * d3;
     t->data = (float *)palloc(pool, sizeof(float) * size);
     t->shape[0] = d0;
     t->shape[1] = d1;
     t->shape[2] = d2;
     t->shape[3] = d3;
-    if (init_weights) {
-        fill_randn(t->data, tsize(t), 0, 0.01);
+
+    switch (init_type) {
+        case ZERO:
+            memset(t->data, 0.0f, size);
+            break;
+        case ONE:
+            fill(t->data, size, 1.0f);
+            break;
+        case XAVIER:
+            fill_xavier(t->data, size, d2, d3);
+            break;
+        case KAIMING:
+            fill_kaiming(t->data, size, d2);
+            break;
+        case NORMAL:
+            fill_gaussian(t->data, size, 0, 0.01);
+            break;
+        case NONE:
+            break;
     }
 }
 
