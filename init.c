@@ -7,8 +7,8 @@
 #define v config->nvocab
 #define dk (config->dmodel / config->nheads)
 #define df config->dff
-#define INIT_A(arg_a, arg_b, arg_c, arg_d, arg_e) tinit(config->pool, &acts->arg_a, arg_b, arg_c, arg_d, arg_e, 0)
-#define INIT_W(arg_a, arg_b, arg_c, arg_d, arg_e) tinit(config->pool, &weights->arg_a, arg_b, arg_c, arg_d, arg_e, 1)
+#define INIT_A(arg_a, arg_b, arg_c, arg_d, arg_e) tinit(config->pool, &acts->arg_a, arg_b, arg_c, arg_d, arg_e, NONE)
+#define INIT_W(arg_a, arg_b, arg_c, arg_d, arg_e, arg_f) tinit(config->pool, &weights->arg_a, arg_b, arg_c, arg_d, arg_e, arg_f)
 
 void init_attn_acts(AttnActivations *acts, Config *config) {
     INIT_A(X, b, 1, s, d);
@@ -20,10 +20,10 @@ void init_attn_acts(AttnActivations *acts, Config *config) {
 }
 
 void init_attn_weights(AttnWeights *weights, Config *config) {
-    INIT_W(WQ, 1, nh, d, dk);
-    INIT_W(WK, 1, nh, d, dk);
-    INIT_W(WV, 1, nh, d, dk);
-    INIT_W(WO, 1, 1, d, d);
+    INIT_W(WQ, 1, nh, d, dk, XAVIER);
+    INIT_W(WK, 1, nh, d, dk, XAVIER);
+    INIT_W(WV, 1, nh, d, dk, XAVIER);
+    INIT_W(WO, 1, 1, d, d, XAVIER);
 }
 
 void init_ff_acts(FFActivations *acts, Config *config) {
@@ -33,10 +33,10 @@ void init_ff_acts(FFActivations *acts, Config *config) {
 }
 
 void init_ff_weights(FFWeights *weights, Config *config) {
-    INIT_W(W1, 1, 1, d, df);
-    INIT_W(W2, 1, 1, df, d);
-    INIT_W(b1, 1, 1, 1, df);
-    INIT_W(b2, 1, 1, 1, d);
+    INIT_W(W1, 1, 1, d, df, KAIMING);
+    INIT_W(W2, 1, 1, df, d, KAIMING);
+    INIT_W(b1, 1, 1, 1, df, ZERO);
+    INIT_W(b2, 1, 1, 1, d, ZERO);
 }
 
 void init_ln_acts(LNActivations *acts, Config *config) {
@@ -46,8 +46,8 @@ void init_ln_acts(LNActivations *acts, Config *config) {
 }
 
 void init_ln_weights(LNWeights *weights, Config *config) {
-    INIT_W(gamma, 1, 1, 1, d);
-    INIT_W(beta, 1, 1, 1, d);
+    INIT_W(gamma, 1, 1, 1, d, ONE);
+    INIT_W(beta, 1, 1, 1, d, ZERO);
 }
 
 void init_decoder_acts(DecoderActivations *acts, Config *config) {
@@ -86,8 +86,8 @@ Weights *init_weights(Config *config) {
     Weights *weights = palloc(config->pool, sizeof(Weights));
     weights->layers = palloc(config->pool, config->nlayers * sizeof(DecoderWeights));
 
-    INIT_W(token_emb, 1, 1, v, d);
-    INIT_W(pos_emb, 1, 1, s, d);
+    INIT_W(token_emb, 1, 1, v, d, NORMAL);
+    INIT_W(pos_emb, 1, 1, s, d, NORMAL);
     for (int i = 0; i < config->nlayers; i++) {
         DecoderWeights *d_weights = &weights->layers[i];
         init_decoder_weights(d_weights, config);
