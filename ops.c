@@ -212,32 +212,21 @@ void lnstats(Tensor *in, Tensor *mean, Tensor *var, float eps) {
             delta2 = x - acc;
             acc2 += delta * delta2;
         }
-        mean->data[j * in->shape[2] + k] = acc;
-        var->data[j * in->shape[2] + k] = 1.0f / sqrtf(acc2 / in->shape[3] + eps);
+        mean->data[i * in->shape[2] + k] = acc;
+        var->data[i * in->shape[2] + k] = 1.0f / sqrtf(acc2 / in->shape[3] + eps);
     }
 }
 
-void rms(Tensor *in, Tensor *gamma, Tensor *out, float eps) {
+void rms(Tensor *in, Tensor *safevar, Tensor *out, float eps) {
     FOR_ROWS(in) {
         double acc = 0.0;
         for (int col = 0; col < in->shape[3]; col++) {
             acc += (double)(in->data[base + col] * in->data[base + col]);
         }
         float inv_rms = 1.0f / sqrtf((float)acc / in->shape[3] + eps);
+        safevar->data[i * in->shape[2] + k] = inv_rms;
         for (int col = 0; col < in->shape[3]; col++) {
-            out->data[base + col] = in->data[base + col] * gamma->data[col] * inv_rms;
-        }
-    }
-}
-
-void soft_grad(Tensor *dS, Tensor *S, Tensor *out) {
-    FOR_ROWS(S) {
-        float acc = 0;
-        for (int col = 0; col < S->shape[3]; col++) {
-            acc += S->data[base + col] * dS->data[base + col];
-        }
-        for (int col = 0; col < S->shape[3]; col++) {
-            out->data[base + col] = S->data[base + col] * (dS->data[base + col] - acc);
+            out->data[base + col] = in->data[base + col] * inv_rms;
         }
     }
 }
@@ -257,10 +246,22 @@ void batch_mean(Tensor *in, Tensor *out) {
     mscal(out, 1.0f * s / tsize(in), out);
 }
 
+void soft_grad(Tensor *dS, Tensor *S, Tensor *out) {
+    FOR_ROWS(S) {
+        float acc = 0;
+        for (int col = 0; col < S->shape[3]; col++) {
+            acc += S->data[base + col] * dS->data[base + col];
+        }
+        for (int col = 0; col < S->shape[3]; col++) {
+            out->data[base + col] = S->data[base + col] * (dS->data[base + col] - acc);
+        }
+    }
+}
+
 void ln_grad(Tensor *dX, Tensor *safevar, Tensor *X, Tensor *out) {
     FOR_ROWS(dX) {
         float acc = 0, acc2 = 0;
-        float var = safevar->data[j * dX->shape[2] + k];
+        float var = safevar->data[i * dX->shape[2] + k];
         for (int col = 0; col < dX->shape[3]; col++) {
             acc += dX->data[base + col];
             acc2 += dX->data[base + col] * X->data[base + col];
@@ -269,6 +270,20 @@ void ln_grad(Tensor *dX, Tensor *safevar, Tensor *X, Tensor *out) {
         acc2 /= X->shape[3];
         for (int col = 0; col < dX->shape[3]; col++) {
             out->data[base + col] = var * (dX->data[base + col] - acc - X->data[base + col] * acc2);
+        }
+    }
+}
+
+void rms_grad(Tensor *dX, Tensor *safevar, Tensor *X, Tensor *out) {
+    FOR_ROWS(dX) {
+        float acc = 0;
+        float var = safevar->data[i * dX->shape[2] + k];
+        for (int col = 0; col < dX->shape[3]; col++) {
+            acc += dX->data[base + col] * X->data[base + col];
+        }
+        acc /= X->shape[3];
+        for (int col = 0; col < dX->shape[3]; col++) {
+            out->data[base + col] = var * (dX->data[base + col] - acc);
         }
     }
 }

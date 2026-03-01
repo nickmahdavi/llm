@@ -63,7 +63,7 @@ void attention_back(Tensor *grad_in, Tensor *grad_out, AttnActivations *acts, At
 
     matmul_bt(grad_in, &weights->WO, dA);
     split_heads(dA, dA, config->nheads, config->pool);
-    
+
     matmul_bt(dA, &acts->V, dS);
     soft_grad(dS, &acts->S, dS);
     mscal(dS, 1.0f / sqrtf((float)config->dmodel / (float)config->nheads), dS);
@@ -97,7 +97,7 @@ void attention_back(Tensor *grad_in, Tensor *grad_out, AttnActivations *acts, At
     prollback(config->pool, off);
 }
 
-void ln_back(Tensor *grad_in, Tensor *grad_out, LNActivations *acts, LNWeights *weights, LNWeights *updates, Config *config) {
+void rms_back(Tensor *grad_in, Tensor *grad_out, RMSActivations *acts, RMSWeights *weights, RMSWeights *updates, Config *config) {
     size_t off = pmark(config->pool);
 
     Tensor *grad_acc_gamma = palloct(config->pool, acts->xhat.shape[0], 1, acts->xhat.shape[2], weights->gamma.shape[3]);
@@ -105,10 +105,9 @@ void ln_back(Tensor *grad_in, Tensor *grad_out, LNActivations *acts, LNWeights *
 
     mmult(&acts->xhat, grad_in, grad_acc_gamma);
     mmult(grad_in, &weights->gamma, dXhat);
-    ln_grad(dXhat, &acts->safevar, &acts->xhat, grad_out);
+    rms_grad(dXhat, &acts->safevar, &acts->xhat, grad_out);
 
     batch_mean(grad_acc_gamma, &updates->gamma);
-    batch_mean(grad_in, &updates->beta);
 
     prollback(config->pool, off);
 }
@@ -120,11 +119,11 @@ void decoder_back(Tensor *grad_in, Tensor *grad_out, DecoderActivations *acts, D
     Tensor *t2 = palloct(config->pool, DIMS(grad_in));
 
     ff_back(grad_in, t1, &acts->ff, &weights->ff, &updates->ff, config);
-    ln_back(t1, t2, &acts->ln2, &weights->ln2, &updates->ln2, config);
+    rms_back(t1, t2, &acts->rms2, &weights->rms2, &updates->rms2, config);
     madd(grad_in, t2, grad_in);
 
     attention_back(grad_in, t1, &acts->attn, &weights->attn, &updates->attn, config);
-    ln_back(t1, t2, &acts->ln1, &weights->ln1, &updates->ln1, config);
+    rms_back(t1, t2, &acts->rms1, &weights->rms1, &updates->rms1, config);
     madd(grad_in, t2, grad_out);
 
     prollback(config->pool, off);
@@ -160,9 +159,8 @@ void backpropagate(Tensor *in, Tensor *labels, Activations *acts, Weights *weigh
     transpose(dWU, dWU, (int[]){0, 1, 3, 2}, config->pool);
     step(&weights->token_emb, dWU, eta);
 
-    ln_back(t1, t2, &acts->last_ln, &weights->last_ln, &grad->last_ln, config);
-    step(&weights->last_ln.beta, &grad->last_ln.beta, eta);
-    step(&weights->last_ln.gamma, &grad->last_ln.gamma, eta);
+    rms_back(t1, t2, &acts->last_rms, &weights->last_rms, &grad->last_rms, config);
+    step(&weights->last_rms.gamma, &grad->last_rms.gamma, eta);
 
     Tensor **grad_in = &t2;
     Tensor **grad_out = &t1;
@@ -184,10 +182,8 @@ void backpropagate(Tensor *in, Tensor *labels, Activations *acts, Weights *weigh
         STEP(ff, b2);
         STEP(ff, W1);
         STEP(ff, W2);
-        STEP(ln1, beta);
-        STEP(ln1, gamma);
-        STEP(ln2, beta);
-        STEP(ln2, gamma);
+        STEP(rms1, gamma);
+        STEP(rms2, gamma);
         #undef STEP
 
         tmp = grad_in;

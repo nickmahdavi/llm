@@ -91,7 +91,6 @@ void fill_kaiming(float *buf, size_t n, int fan_in) {
     for (size_t i = 0; i < n; i++) buf[i] = (drand48() - 0.5f) * limit;
 }
 
-
 void tinit(Pool *pool, Tensor *t, int d0, int d1, int d2, int d3, init_t init_type) {
     size_t size = (size_t) d0 * d1 * d2 * d3;
     t->data = (float *)palloc(pool, sizeof(float) * size);
@@ -117,6 +116,8 @@ void tinit(Pool *pool, Tensor *t, int d0, int d1, int d2, int d3, init_t init_ty
             fill_gaussian(t->data, size, 0, 0.01);
             break;
         case NONE:
+            break;
+        default:
             break;
     }
 }

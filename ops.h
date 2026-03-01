@@ -22,8 +22,10 @@ void gelu(Tensor *in, Tensor *out);
 void lnstats(Tensor *in, Tensor *mean, Tensor *var, float eps);
 void batch_mean(Tensor *in, Tensor *out);
 void gelu_grad(Tensor *dG, Tensor *in, Tensor *out);
-void ln_grad(Tensor *dX, Tensor *safevar, Tensor *X, Tensor *out);
+void rms_grad(Tensor *dX, Tensor *safevar, Tensor *X, Tensor *out);
 void step(Tensor *x, Tensor *grad, float eta);
 float crossentropy(Tensor *X, Tensor *y);
+void rms_grad(Tensor *dX, Tensor *safevar, Tensor *X, Tensor *out);
+void rms(Tensor *in, Tensor *safevar, Tensor *out, float eps);
 
 #endif
