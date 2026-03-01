@@ -1,27 +1,34 @@
-- rmsnorm
-- swiglu
-- better positional encodings (eg rope)
-- gqa
-- dropout
-- better init
-- BPE and tokenizer pipeline
-- get some training data
-- better data pipelining
-- more logging
-- separate gradient steps + clip gradients
-- adamw
-- gradient accumulation + batching
-- mixed precision
-- memory and matmul optimizations
-- lr schedule
-- get more training data
-- more train utils (splits, gradient/train checkpointing, etc)
-- get more training data
-- striding and lazy tensor reordering
-- start flash
-- port to cuda
-- parallelize
-- distributed training and scale up
-- inference utils, sampling, kv and prompt caching
-- eval harness
-- rlhf
+- [x] rmsnorm
+- [x] better init
+- [ ] integer tokens + BPE and tokenizer pipeline
+- [ ] separate steps from backwards pass
+- [ ] numerical gradient checking
+- [ ] cppify before overcommitted
+- [ ] clip gradients
+- [ ] adamw
+- [ ] generalize weight tying (its jank right now)
+- [ ] lr schedule
+- [ ] gradient accumulation + batching
+- [ ] gradient checkpointing
+- [ ] get some training data
+- [ ] better data pipelining
+- [ ] train utils (eg splits)
+- [ ] mixed precision
+- [ ] get more training data
+- [ ] memory optimizations and SIMD
+- [ ] striding and lazy tensor contiguousification <- is that a word
+- [ ] get more training data
+- [ ] start flash
+- [ ] port to cuda
+- [ ] parallelize
+- [ ] distributed training and scale up
+- [ ] inference utils, sampling, kv and prompt caching
+- [ ] eval harness
+- [ ] grpo. i think at this point maybe time to start using python bindings but then whats the difference sigh
+
+maybe later
+- [ ] dropout
+- [ ] swiglu
+- [ ] better positional encodings (eg rope)
+- [ ] gqa
+- [ ] more logging

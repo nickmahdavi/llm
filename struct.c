@@ -2,34 +2,14 @@
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
-#include <string.h>
 #include "struct.h"
 #include "ops.h"
 
-/*
-size_t round_up_pow2(size_t n) {
-    if (n == 0) return 1;
-    if (n > SIZE_MAX / 2 + 1) return 0;
-    n--;
-    n |= n >> 1;
-    n |= n >> 2;
-    n |= n >> 4;
-    n |= n >> 8;
-    n |= n >> 16;
-    n |= n >> 32;
-    return n + 1;
-} */
-
 void *palloc(Pool *pool, size_t n_bytes) {
-    /* I'll figure this out later -- for now just assume allocated enough space
-    if (pool->off + n_bytes > pool->size) {
-        size_t new_size = round_up_pow2(pool->off + n_bytes);
-        pool->data = realloc(pool->data, new_size);
-        pool->size = new_size;
-    } */
-    void *ptr = pool->data + pool->off;
-    pool->off += n_bytes;
-    return ptr;
+    uintptr_t base = (uintptr_t)pool->data;
+    uintptr_t aligned = (uintptr_t)(base + pool->off + 15) & ~((uintptr_t)15);
+    pool->off = (size_t)(aligned - base) + n_bytes;
+    return (void *)aligned;
 }
 
 size_t pmark(Pool *pool) {
@@ -101,7 +81,7 @@ void tinit(Pool *pool, Tensor *t, int d0, int d1, int d2, int d3, init_t init_ty
 
     switch (init_type) {
         case ZERO:
-            memset(t->data, 0.0f, size);
+            memset(t->data, 0, sizeof(float) * size);
             break;
         case ONE:
             fill(t->data, size, 1.0f);
