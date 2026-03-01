@@ -1,0 +1,1 @@
+void forward(Tensor *in, Weights *weights, Activations *acts, Config *config);
