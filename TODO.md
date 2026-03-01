@@ -1,0 +1,27 @@
+- rmsnorm
+- swiglu
+- better positional encodings (eg rope)
+- gqa
+- dropout
+- better init
+- BPE and tokenizer pipeline
+- get some training data
+- better data pipelining
+- more logging
+- separate gradient steps + clip gradients
+- adamw
+- gradient accumulation + batching
+- mixed precision
+- memory and matmul optimizations
+- lr schedule
+- get more training data
+- more train utils (splits, gradient/train checkpointing, etc)
+- get more training data
+- striding and lazy tensor reordering
+- start flash
+- port to cuda
+- parallelize
+- distributed training and scale up
+- inference utils, sampling, kv and prompt caching
+- eval harness
+- rlhf
