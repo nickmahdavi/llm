@@ -41,6 +41,28 @@ void step(Tensor *x, Tensor *grad, float eta) {
         x->data[i] -= grad->data[i] * eta;
 }
 
+size_t round_up_pow2(size_t n) {
+    if (n == 0) return 1;
+    if (n > SIZE_MAX / 2 + 1) return 0;
+    n--;
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    n |= n >> 32;
+    return n + 1;
+}
+
+uint32_t mueller(uint32_t x) {
+    x ^= x >> 16;
+    x *= 0x45d9f3b;
+    x ^= x >> 16;
+    x *= 0x45d9f3b;
+    x ^= x >> 16;
+    return x;
+}
+
 void matmul(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out) {
     int xbatch = x->shape[0] * x->shape[1];
     int ybatch = y->shape[0] * y->shape[1];

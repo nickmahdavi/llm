@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -5,10 +6,22 @@
 #include "struct.h"
 #include "ops.h"
 
+Pool *pinit(char *chunk, size_t nbytes) {
+    if (nbytes < sizeof(Pool) + 63) return NULL;
+    Pool *pool = (Pool *)chunk;
+    uintptr_t base = (uintptr_t)(chunk + sizeof(Pool));
+    uintptr_t aligned = (base + 63) & ~((uintptr_t)63);
+    pool->data = (char *)aligned;
+    pool->size = nbytes - (pool->data - chunk);
+    pool->off = 0;
+    return pool;
+}
+
 void *palloc(Pool *pool, size_t n_bytes) {
     uintptr_t base = (uintptr_t)pool->data;
     uintptr_t aligned = (uintptr_t)(base + pool->off + 15) & ~((uintptr_t)15);
     pool->off = (size_t)(aligned - base) + n_bytes;
+    assert(pool->off < pool->size && "pool overflow");
     return (void *)aligned;
 }
 
@@ -27,22 +40,26 @@ Tensor *palloct(Pool *pool, int d0, int d1, int d2, int d3) {
     return tensor;
 }
 
-void fill(float *buf, size_t n, float val) {
-    if (n == 0) {
-        return;
-    } else if (n < 64) {
-        for (size_t i = 0; i < n; i++) buf[i] = val;
-    } else {
-        buf[0] = val;
-        int chunk_size = 1;
-        float *cur = buf + 1;
-        while (cur + chunk_size < buf + n) {
-            memcpy(cur, buf, sizeof(float) * chunk_size);
-            cur += chunk_size;
-            chunk_size *= 2;
-        }
-        memcpy(cur, buf, sizeof(float) * (buf + n - cur));
+void fill(void *buf, void *val, size_t n, size_t val_size) {
+    char *p = (char *)buf;
+    char *q = (char *)val;
+    char *cur = p;
+
+    size_t buf_size = n * val_size;
+    size_t min = round_up_pow2(256 / val_size) * val_size;
+    size_t chunk_size = min < buf_size ? min : buf_size;
+
+    if (buf_size == 0 || val_size == 0) return;
+
+    for (; cur < p + chunk_size; cur += val_size) memcpy(cur, q, val_size);
+
+    while (cur + chunk_size < p + buf_size) {
+        memcpy(cur, p, chunk_size);
+        cur += chunk_size;
+        chunk_size <<= 1;
     }
+
+    memcpy(cur, p, p + buf_size - cur);
 }
 
 void fill_gaussian(float *buf, size_t n, float mean, float std) {
@@ -84,7 +101,7 @@ void tinit(Pool *pool, Tensor *t, int d0, int d1, int d2, int d3, init_t init_ty
             memset(t->data, 0, sizeof(float) * size);
             break;
         case ONE:
-            fill(t->data, size, 1.0f);
+            fill(t->data, (float[]){1.0f}, size, sizeof(float));
             break;
         case XAVIER:
             fill_xavier(t->data, size, d2, d3);
