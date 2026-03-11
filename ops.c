@@ -3,6 +3,7 @@
 #include <math.h>
 #include <float.h>
 #include <string.h>
+#include <Accelerate/Accelerate.h>
 #include "utils.h"
 #include "struct.h"
 
@@ -95,34 +96,15 @@ void matmul(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out) {
     int xsize = x->shape[2] * x->shape[3];
     int ysize = y->shape[2] * y->shape[3];
     int osize = x->shape[2] * y->shape[3];
-    int ii_max = x->shape[2];
-    int jj_max = y->shape[3];
-    int kk_max = x->shape[3];
-    float acc[TILE][TILE];
+    int M = x->shape[2];
+    int N = y->shape[3];
+    int K = x->shape[3];
     for (int b = 0; b < xbatch; b++) {
-        for (int ii = 0; ii < ii_max; ii += TILE) {
-            int i_max = ii + TILE > ii_max ? ii_max : ii + TILE;
-            for (int jj = 0; jj < jj_max; jj += TILE) {
-                int j_max = jj + TILE > jj_max ? jj_max : jj + TILE;
-                memset(acc, 0, sizeof(acc));
-                for (int kk = 0; kk < kk_max; kk += TILE) {
-                    int k_max = kk + TILE > kk_max ? kk_max : kk + TILE;
-                    for (int i = ii; i < i_max; i++) {
-                        for (int k = kk; k < k_max; k++) {
-                            float a = x->data[b * xsize + i * kk_max + k];
-                            for (int j = jj; j < j_max; j++) {
-                                acc[i - ii][j - jj] += a * y->data[b * ysize * y_do_batch + k * jj_max + j];
-                            }
-                        }
-                    }
-                }
-                for (int i = ii; i < i_max; i ++) {
-                    for (int j = jj; j < j_max; j++) {
-                        out->data[b * osize + i * jj_max + j] = acc[i - ii][j - jj];
-                    }
-                }
-            }
-        }
+        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                    M, N, K, 1.0f,
+                    x->data + b * xsize, K,
+                    y->data + b * ysize * y_do_batch, N,
+                    0.0f, out->data + b * osize, N);
     }
 }
 
@@ -134,34 +116,15 @@ void matmul_at(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out) {
     int xsize = x->shape[2] * x->shape[3];
     int ysize = y->shape[2] * y->shape[3];
     int osize = x->shape[3] * y->shape[3];
-    int ii_max = x->shape[3];
-    int jj_max = y->shape[3];
-    int kk_max = x->shape[2];
-    float acc[TILE][TILE];
+    int M = x->shape[3];
+    int N = y->shape[3];
+    int K = x->shape[2];
     for (int b = 0; b < xbatch; b++) {
-        for (int ii = 0; ii < ii_max; ii += TILE) {
-            int i_max = ii + TILE > ii_max ? ii_max : ii + TILE;
-            for (int jj = 0; jj < jj_max; jj += TILE) {
-                int j_max = jj + TILE > jj_max ? jj_max : jj + TILE;
-                memset(acc, 0, sizeof(acc));
-                for (int kk = 0; kk < kk_max; kk += TILE) {
-                    int k_max = kk + TILE > kk_max ? kk_max : kk + TILE;
-                    for (int i = ii; i < i_max; i++) {
-                        for (int k = kk; k < k_max; k++) {
-                            float a = x->data[b * xsize + k * ii_max + i];
-                            for (int j = jj; j < j_max; j++) {
-                                acc[i - ii][j - jj] += a * y->data[b * ysize * y_do_batch + k * jj_max + j];
-                            }
-                        }
-                    }
-                }
-                for (int i = ii; i < i_max; i ++) {
-                    for (int j = jj; j < j_max; j++) {
-                        out->data[b * osize + i * jj_max + j] = acc[i - ii][j - jj];
-                    }
-                }
-            }
-        }
+        cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+                    M, N, K, 1.0f,
+                    x->data + b * xsize, M,
+                    y->data + b * ysize * y_do_batch, N,
+                    0.0f, out->data + b * osize, N);
     }
 }
 
@@ -173,33 +136,15 @@ void matmul_bt(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out) {
     int xsize = x->shape[2] * x->shape[3];
     int ysize = y->shape[2] * y->shape[3];
     int osize = x->shape[2] * y->shape[2];
-    int ii_max = x->shape[2];
-    int jj_max = y->shape[2];
-    int kk_max = x->shape[3];
-    float acc[TILE][TILE];
+    int M = x->shape[2];
+    int N = y->shape[2];
+    int K = x->shape[3];
     for (int b = 0; b < xbatch; b++) {
-        for (int ii = 0; ii < ii_max; ii += TILE) {
-            int i_max = ii + TILE > ii_max ? ii_max : ii + TILE;
-            for (int jj = 0; jj < jj_max; jj += TILE) {
-                int j_max = jj + TILE > jj_max ? jj_max : jj + TILE;
-                memset(acc, 0, sizeof(acc));
-                for (int kk = 0; kk < kk_max; kk += TILE) {
-                    int k_max = kk + TILE > kk_max ? kk_max : kk + TILE;
-                    for (int i = ii; i < i_max; i++) {
-                        for (int j = jj; j < j_max; j++) {
-                            for (int k = kk; k < k_max; k++) {
-                                acc[i - ii][j - jj] += x->data[b * xsize + i * kk_max + k] * y->data[b * ysize * y_do_batch + j * kk_max + k];
-                            }
-                        }
-                    }
-                }
-                for (int i = ii; i < i_max; i ++) {
-                    for (int j = jj; j < j_max; j++) {
-                        out->data[b * osize + i * jj_max + j] = acc[i - ii][j - jj];
-                    }
-                }
-            }
-        }
+        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                    M, N, K, 1.0f,
+                    x->data + b * xsize, K,
+                    y->data + b * ysize * y_do_batch, K,
+                    0.0f, out->data + b * osize, N);
     }
 }
 
