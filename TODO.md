@@ -1,8 +1,8 @@
 - [x] rmsnorm
 - [x] better init
-- [ ] integer tokens + BPE and tokenizer pipeline
-- [ ] separate steps from backwards pass
-- [ ] numerical gradient checking
+- [x] integer tokens + BPE and tokenizer pipeline
+- [x] separate steps from backwards pass
+- [x] numerical gradient checking
 - [ ] cppify before overcommitted
 - [ ] clip gradients
 - [ ] adamw
