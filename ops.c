@@ -58,6 +58,13 @@ void step_adamw(Tensor *w, Tensor *g, Tensor *m, Tensor *v, float beta1, float b
     }
 }
 
+float cosine_lr(int t, int n_warmup, int n_decay, float max_lr, float min_lr) {
+    if (t <= n_warmup) return max_lr * t / n_warmup;
+    t -= n_warmup;
+    float x = (t < n_decay) ? (float)t / n_decay : 1.0f;
+    return (max_lr - min_lr) * (cosf(M_PI * x) + 1.0f) / 2.0f + min_lr;
+}
+
 size_t round_up_pow2(size_t n) {
     if (n == 0) return 1;
     if (n > SIZE_MAX / 2 + 1) return 0;

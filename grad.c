@@ -187,19 +187,13 @@ void backpropagate(Tensor *in, Tensor *labels, Activations *acts, Weights *weigh
     prollback(config->pool, off);
 }
 
-void update(Weights *weights, Weights *grad, Config *config) {
-    float eta = config->eta * fminf(1.0f, config->max_norm / grad_norm(grad, config->nlayers));
-    #define STEP(fld) step(&weights->fld, &grad->fld, eta);
-    FOR_WEIGHTS(STEP, config->nlayers);
-    #undef STEP
-}
-
 void adamw(int t, Weights *weights, Weights *grad, Weights *m, Weights *v, Config *config) {
+    float eta = cosine_lr(t, config->nwarmup, config->ndecay, config->eta_max, config->eta_min);
     float scale = fminf(1.0f, config->max_norm / grad_norm(grad, config->nlayers));
     float b1t = powf(config->beta1, (float)t);
     float b2t = powf(config->beta2, (float)t);
 
-    #define STEP(fld) step_adamw(t, &weights->fld, &grad->fld, &m->fld, &v->fld, config->beta1, config->beta2, b1t, b2t, config->lambda, config->eta, config->eps, scale)
+    #define STEP(fld) step_adamw(&weights->fld, &grad->fld, &m->fld, &v->fld, config->beta1, config->beta2, b1t, b2t, config->lambda, eta, config->eps, scale)
     FOR_WEIGHTS(STEP, config->nlayers);
     #undef STEP
 }

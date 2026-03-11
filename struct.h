@@ -163,8 +163,8 @@ typedef struct {
 } Activations;
 
 typedef struct {
-    int max_batch, max_seq, nvocab, nheads, dmodel, dff, nlayers;
-    float eps, eta, beta1, beta2, lambda, max_norm;
+    int max_batch, max_seq, nvocab, nheads, dmodel, dff, nlayers, nwarmup, ndecay;
+    float eps, eta_max, eta_min, beta1, beta2, lambda, max_norm;
     Pool *pool;
 } Config;
 
