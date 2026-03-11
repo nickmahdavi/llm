@@ -10,7 +10,7 @@
 - [x] lr schedule
 - [ ] gradient accumulation + batching
 - [ ] gradient checkpointing
-- [ ] get some training data
+- [x] get some training data
 - [ ] better data pipelining
 - [ ] train utils (eg splits)
 - [ ] mixed precision

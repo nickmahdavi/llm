@@ -36,6 +36,17 @@ void *palloc(Pool *pool, size_t n_bytes);
 size_t pmark(Pool *pool);
 void prollback(Pool *pool, size_t index);
 
+typedef struct TT TT;
+struct TT {
+    uint16_t id;
+    TT *prev, *next;
+};
+
+typedef struct {
+    uint16_t *tokens;
+    int len;
+} Tokenized;
+
 typedef struct Token Token;
 struct Token {
     size_t idx;
@@ -84,6 +95,7 @@ typedef struct {
 
 typedef struct {
     char **tokens;
+    uint16_t (*merges)[2];
     int *lens;
     int count;
 } TokenTable;

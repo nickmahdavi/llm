@@ -5,6 +5,10 @@
 #include <string.h>
 #include <stdbool.h>
 #include <limits.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <unistd.h>
 #include "struct.h"
 #include "ops.h"
 #include "tok.h"
@@ -22,63 +26,210 @@ size_t tok_mem(int len, int max_vocab) {
     return token_size + bigram_size + vocab_size + heap_size + hash_size + table_size + sizeof(BPE);
 }
 
-BPE *train(uint8_t *data, int len, int max_vocab, Pool *pool) {
+unsigned char nibble(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return 0;
+}
+
+char hex_to_byte(char high, char low) {
+    return (char)((nibble(high) << 4) | nibble(low));
+}
+
+TokenTable *from_file(char *vocab, char *merges, Pool *pool) {
+    int fd = open(merges, O_RDONLY);
+    struct stat st;
+    fstat(fd, &st);
+    int n = (int)st.st_size;
+    char *data = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+
+    int nvocab = 256;
+    for (int i = 0; i < n; i++) {
+        if (data[i] == '\n') nvocab++;
+    }
+
+    TokenTable *table = palloc(pool, sizeof(TokenTable));
+    table->count = nvocab;
+    table->merges = palloc(pool, sizeof(uint16_t) * 2 * (nvocab - 255));
+    table->tokens = palloc(pool, sizeof(char *) * nvocab);
+    table->lens = palloc(pool, sizeof(int) * nvocab);
+    
+    char buf[16];
+    for (int i = 0, a = 0; i < n; a++) {
+        for (int j = 0;; i++, j++) {
+            if (data[i] == ' ') {
+                buf[j] = '\0';
+                i++;
+                break;
+            }
+            buf[j] = data[i];
+        }
+        uint16_t l = (uint16_t)strtol(buf, NULL, 10);
+        for (int j = 0;; i++, j++) {
+            if (i == n || data[i] == '\n') {
+                buf[j] = '\0';
+                i++;
+                break;
+            }
+            buf[j] = data[i];
+        }
+        uint16_t r = (uint16_t)strtol(buf, NULL, 10);
+        table->merges[a][0] = l;
+        table->merges[a][1] = r;
+    }
+    munmap(data, st.st_size);
+    close(fd);
+
+    fd = open(vocab, O_RDONLY);
+    fstat(fd, &st);
+    n = (int)st.st_size;
+    data = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+
+    for (int i = 0, a = 0; i < n; a++) {
+        int k = 0;
+        for (int j = 0; i + j != n && data[i + j] != '\n'; j++) {
+            if (data[i + j] == '<') k++;
+        }
+        table->tokens[a] = palloc(pool, sizeof(char) * (k + 1));
+        table->lens[a] = k;
+        for (int j = 0; j < k; j++, i += 6) {
+            table->tokens[a][j] = hex_to_byte(data[i+3], data[i+4]);
+        }
+        table->tokens[a][k] = '\0';
+        i++;
+    }
+
+    munmap(data, st.st_size);
+    close(fd);
+
+    return table;
+}
+
+Tokenized *tokenize(char *data, int len, TokenTable *table, Pool *pool) {
+    Tokenized *res = palloc(pool, sizeof(Tokenized));
+    size_t off = pmark(pool);
+
+    TT *head = palloc(pool, sizeof(TT));
+    head->id = (uint16_t)((unsigned char)data[0]);
+    head->prev = NULL;
+    TT *cur = head;
+    for (int i = 1; i < len; i++) {
+        TT *nxt = palloc(pool, sizeof(TT));
+        nxt->id = (uint16_t)((unsigned char)data[i] - 1);
+        nxt->next = NULL;
+        nxt->prev = cur;
+        cur->next = nxt;
+        cur = nxt;
+    }
+    for (uint16_t i = 255; i < table->count; i++) {
+        uint16_t l = table->merges[i - 255][0];
+        uint16_t r = table->merges[i - 255][1];
+        for (TT *cur = head->next; cur->next != NULL; cur = cur->next) {
+            if (cur->prev->id == l && cur->id == r) {
+                cur->prev->id = i;
+                cur->prev->next = cur->next;
+                cur->next->prev = cur->prev;
+            }
+        }
+    }
+    int acc = 0;
+    for (TT *cur = head; cur != NULL; cur = cur->next) acc++;
+    res->len = acc;
+
+    uint16_t toks[acc];
+
+    int i = 0;
+    for (TT *cur = head; cur != NULL; cur = cur->next) toks[i++] = cur->id;
+
+    prollback(pool, off);
+    res->tokens = palloc(pool, sizeof(uint16_t) * acc);
+    memcpy(res->tokens, toks, sizeof(uint16_t) * acc);
+    return res;
+}
+
+char *decode(Tokenized *tokenized, TokenTable *table, Pool *pool) {
+    int acc = 0;
+    for (int i = 0; i < tokenized->len; i++) {
+        acc += table->lens[tokenized->tokens[i]];
+    }
+    char *out = palloc(pool, sizeof(char) * (acc + 1));
+    char *ptr = out;
+    for (int i = 0; i < tokenized->len; i++) {
+        ptr = stpcpy(ptr, table->tokens[tokenized->tokens[i]]);
+    }
+    return out;
+}
+
+BPE *bpe_train(uint8_t *data, int len, int max_vocab, Pool *pool) {
     BPE *bpe = bpe_init(data, len, max_vocab, pool);
     tok_ingest(bpe, pool);
     tok_train(bpe, pool);
     return bpe;
 }
 
+int cmp(const void *e1, const void *e2) {
+    TokenInfo *a = *(TokenInfo **)e1;
+    TokenInfo *b = *(TokenInfo **)e2;
+    return (int)((a->id > b->id) - (a->id < b->id));
+}
+
 TokenTable *results(BPE *bpe, Pool *pool) {
     TokenTable *table = palloc(pool, sizeof(TokenTable));
 
-    int n_pairs = bpe->vocab->used;
-    int n_vocab = bpe->vocab->active;
-    char **tokens = palloc(pool, sizeof(char *) * n_vocab);
-    int *lens = palloc(pool, sizeof(int) * n_vocab);
-    TokenInfo **by_id = palloc(pool, sizeof(TokenInfo *) * n_vocab);
-    for (int i = 0, j = 0; i < n_pairs && j < n_vocab; i++) {
+    table->count = bpe->vocab->active;
+    table->tokens = palloc(pool, sizeof(char *) * table->count);
+    table->lens = palloc(pool, sizeof(int) * table->count);
+    table->merges = palloc(pool, sizeof(uint16_t) * 2 * (table->count - 255));
+
+    TokenInfo *ids[table->count];
+
+    for (int i = 0, j = 0; j < table->count; i++) {
         TokenInfo *info = bpe->vocab->tokens[i];
         if (!info->active) continue;
-        by_id[info->id] = info;
+        ids[j] = info;
         j++;
     }
-    for (int i = 0; i < n_vocab; i++) {
-        TokenInfo *info = by_id[i];
-        if (!info->active) continue;
-        if (i < 256) {
-            tokens[i] = palloc(pool, sizeof(char) * 2);
-            tokens[i][0] = (char)info->left;
-            tokens[i][1] = '\0';
-            lens[i] = 1;
+
+    qsort(ids, table->count, sizeof(TokenInfo *), cmp);
+
+    for (int i = 0; i < table->count; i++) {
+        TokenInfo *info = ids[i];
+        if (i < 255) {
+            table->tokens[i] = palloc(pool, sizeof(char) * 2);
+            table->tokens[i][0] = (char)info->left;
+            table->tokens[i][1] = '\0';
+            table->lens[i] = 1;
         } else {
-            char *c1 = tokens[info->left];
-            char *c2 = tokens[info->right];
-            int l1 = lens[info->left];
-            int l2 = lens[info->right];
+            char *c1 = table->tokens[info->left];
+            char *c2 = table->tokens[info->right];
+            int l1 = table->lens[info->left];
+            int l2 = table->lens[info->right];
 
-            tokens[i] = palloc(pool, sizeof(char) * (l1 + l2 + 1));
-            lens[i] = l1 + l2;
+            printf("%s %s\n", c1, c2);
+            table->tokens[i] = palloc(pool, sizeof(char) * (l1 + l2 + 1));
+            table->lens[i] = l1 + l2;
 
-            memcpy(tokens[i], c1, l1);
-            memcpy(tokens[i] + l1, c2, l2);
-            tokens[i][l1 + l2] = '\0';
+            memcpy(table->tokens[i], c1, l1);
+            memcpy(table->tokens[i] + l1, c2, l2);
+            table->tokens[i][l1 + l2] = '\0';
+
+            table->merges[i - 255][0] = info->left;
+            table->merges[i - 255][1] = info->right;
         }
+
     }
-    table->tokens = tokens;
-    table->lens = lens;
-    table->count = n_vocab;
     return table;
 }
 
 void tok_ingest(BPE *bpe, Pool *pool) {
-    for (int c = 0; c <= UCHAR_MAX; c++) tok_define_char(bpe->vocab, c, pool);
+    for (int c = 1; c <= UCHAR_MAX; c++) tok_define_char(bpe->vocab, c, pool);
 
     Token *prev = NULL;
     Token *cur = NULL;
 
     for (int i = 0; i < bpe->len - 1; i++) {
-        cur = tok_push(bpe->map, bpe->heap, bpe->vocab, NULL, (uint16_t)bpe->data[i], (uint16_t)bpe->data[i + 1], pool);
+        cur = tok_push(bpe->map, bpe->heap, bpe->vocab, NULL, (uint16_t)bpe->data[i] - 1, (uint16_t)bpe->data[i + 1] - 1, pool);
         if (prev) prev->next = cur;
         cur->prev = prev;
         prev = cur;
@@ -89,7 +240,6 @@ void tok_ingest(BPE *bpe, Pool *pool) {
 
 void tok_train(BPE *bpe, Pool *pool) {
     while (bpe->vocab->active < bpe->max_vocab) {
-        printf("%zu\n", bpe->vocab->active);
         tok_next(bpe->map, bpe->heap, bpe->vocab, pool);
     }
 }

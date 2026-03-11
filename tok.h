@@ -3,12 +3,9 @@
 
 #include "struct.h"
 
-BPE *train(uint8_t *data, int len, int max_vocab, Pool *pool);
-size_t tok_mem(int len, int max_vocab);
-TokenTable *results(BPE *bpe, Pool *pool);
 
 size_t tok_mem(int len, int max_vocab);
-BPE *train(uint8_t *data, int len, int max_vocab, Pool *pool);
+BPE *bpe_train(uint8_t *data, int len, int max_vocab, Pool *pool);
 TokenTable *results(BPE *bpe, Pool *pool);
 void tok_ingest(BPE *bpe, Pool *pool);
 void tok_train(BPE *bpe, Pool *pool);
@@ -35,5 +32,8 @@ Vocab *vc_init(int max_bigrams, Pool *pool);
 size_t vc_push(Vocab *vocab, TokenInfo *info);
 TokenInfo *vc_get(Vocab *vocab, Token *tok);
 BPE *bpe_init(uint8_t *data, int len, int max_vocab, Pool *pool);
+TokenTable *from_file(char *vocab, char *merges, Pool *pool);
+Tokenized *tokenize(char *data, int len, TokenTable *table, Pool *pool);
+char *decode(Tokenized *tokenized, TokenTable *table, Pool *pool);
 
 #endif
