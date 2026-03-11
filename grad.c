@@ -3,6 +3,8 @@
 #include "struct.h"
 #include "ops.h"
 
+#define BS (grad_in->shape[0] * grad_in->shape[2])
+
 void logits_back(Tensor *logits, Tensor *labels, Tensor *grad_out) {
     msub(logits, labels, grad_out);
 }
@@ -12,9 +14,8 @@ void unembedding_back(Tensor *grad_in, Tensor *grad_out, Tensor *X, Tensor *WU, 
     Tensor *grad_acc_WU = palloct(config->pool, X->shape[0], WU->shape[1], WU->shape[2], WU->shape[3]);
 
     matmul_at(X, grad_in, grad_acc_WU);
-    batch_mean(grad_acc_WU, WU_grad);
+    batch_mean(grad_acc_WU, WU_grad, BS);
     matmul_bt(grad_in, WU, grad_out);
-    mscal(WU_grad, 1.0f / grad_in->shape[2], WU_grad);
 
     prollback(config->pool, off);
 }
@@ -36,12 +37,10 @@ void ff_back(Tensor *grad_in, Tensor *grad_out, FFActivations *acts, FFWeights *
     matmul_at(&acts->X, dH, grad_acc_W1);
     matmul_bt(dH, &weights->W1, grad_out);
 
-    batch_mean(grad_in, &updates->b2);
-    batch_mean(grad_acc_W2, &updates->W2);
-    mscal(&updates->W2, 1.0f / grad_in->shape[2], &updates->W2);
-    batch_mean(dH, &updates->b1);
-    batch_mean(grad_acc_W1, &updates->W1);
-    mscal(&updates->W1, 1.0f / grad_in->shape[2], &updates->W1);
+    batch_mean(grad_in, &updates->b2, BS);
+    batch_mean(grad_acc_W2, &updates->W2, BS);
+    batch_mean(dH, &updates->b1, BS);
+    batch_mean(grad_acc_W1, &updates->W1, BS);
 
     prollback(config->pool, off);
 }
@@ -90,15 +89,10 @@ void attention_back(Tensor *grad_in, Tensor *grad_out, AttnActivations *acts, At
     matmul_at(&acts->X, dK, grad_acc_WK);
     matmul_at(&acts->X, dV, grad_acc_WV);
 
-    batch_mean(grad_acc_WO, &updates->WO);
-    batch_mean(grad_acc_WQ, &updates->WQ);
-    batch_mean(grad_acc_WK, &updates->WK);
-    batch_mean(grad_acc_WV, &updates->WV);
-
-    mscal(&updates->WO, 1.0f / grad_in->shape[2], &updates->WO);
-    mscal(&updates->WQ, 1.0f / grad_in->shape[2], &updates->WQ);
-    mscal(&updates->WK, 1.0f / grad_in->shape[2], &updates->WK);
-    mscal(&updates->WV, 1.0f / grad_in->shape[2], &updates->WV);
+    batch_mean(grad_acc_WO, &updates->WO, BS);
+    batch_mean(grad_acc_WQ, &updates->WQ, BS);
+    batch_mean(grad_acc_WK, &updates->WK, BS);
+    batch_mean(grad_acc_WV, &updates->WV, BS);
 
     madd(dXQ, dXK, grad_out);
     madd(grad_out, dXV, grad_out);
@@ -116,7 +110,7 @@ void rms_back(Tensor *grad_in, Tensor *grad_out, RMSActivations *acts, RMSWeight
     mmult(grad_in, &weights->gamma, dXhat);
     rms_grad(dXhat, &acts->safevar, &acts->xhat, grad_out);
 
-    batch_mean(grad_acc_gamma, &updates->gamma);
+    batch_mean(grad_acc_gamma, &updates->gamma, BS);
 
     prollback(config->pool, off);
 }
@@ -145,10 +139,8 @@ void embedding_back(Tensor *grad_in, Tensor *X, Tensor *WE_grad, Tensor *WP_grad
     Tensor *grad_acc_WE = palloct(config->pool, X->shape[0], WE_grad->shape[1], WE_grad->shape[2], WE_grad->shape[3]);
 
     matmul_at(X, grad_in, grad_acc_WE);
-    batch_mean(grad_acc_WE, WE_grad);
-    batch_mean(grad_in, WP_grad);
-    mscal(WE_grad, 1.0f / grad_in->shape[2], WE_grad);
-    mscal(WP_grad, 1.0f / grad_in->shape[2], WP_grad);
+    batch_mean(grad_acc_WE, WE_grad, BS);
+    batch_mean(grad_in, WP_grad, BS);
 
     prollback(config->pool, off);
 }
@@ -187,8 +179,8 @@ void backpropagate(Tensor *in, Tensor *labels, Activations *acts, Weights *weigh
     prollback(config->pool, off);
 }
 
-void adamw(int t, Weights *weights, Weights *grad, Weights *m, Weights *v, Config *config) {
-    float eta = cosine_lr(t, config->nwarmup, config->ndecay, config->eta_max, config->eta_min);
+void adamw(int t, int batch, Weights *weights, Weights *grad, Weights *m, Weights *v, Config *config) {
+    float eta = cosine_lr(t, config->nwarmup, config->ndecay, config->eta_max, config->eta_min) / batch;
     float scale = fminf(1.0f, config->max_norm / grad_norm(grad, config->nlayers));
     float b1t = powf(config->beta1, (float)t);
     float b2t = powf(config->beta2, (float)t);
@@ -196,4 +188,10 @@ void adamw(int t, Weights *weights, Weights *grad, Weights *m, Weights *v, Confi
     #define STEP(fld) step_adamw(&weights->fld, &grad->fld, &m->fld, &v->fld, config->beta1, config->beta2, b1t, b2t, config->lambda, eta, config->eps, scale)
     FOR_WEIGHTS(STEP, config->nlayers);
     #undef STEP
+}
+
+void zero_grad(Weights *grad, Config *config) {
+    #define ZERO(fld) for (int i = 0; i < tsize(&grad->fld); i++) grad->fld.data[i] = 0
+    FOR_WEIGHTS(ZERO, config->nlayers);
+    #undef ZERO
 }

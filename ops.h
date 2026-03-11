@@ -20,7 +20,6 @@ void soft_grad(Tensor *dS, Tensor *S, Tensor *out);
 void triu_mask(Tensor *in, Tensor *out, float val);
 void gelu(Tensor *in, Tensor *out);
 void lnstats(Tensor *in, Tensor *mean, Tensor *var, float eps);
-void batch_mean(Tensor *in, Tensor *out);
 void gelu_grad(Tensor *dG, Tensor *in, Tensor *out);
 void rms_grad(Tensor *dX, Tensor *safevar, Tensor *X, Tensor *out);
 void step(Tensor *x, Tensor *grad, float eta);
@@ -30,8 +29,9 @@ void rms(Tensor *in, Tensor *safevar, Tensor *out, float eps);
 size_t round_up_pow2(size_t n);
 uint32_t mueller(uint32_t x);
 float crossentropy(Tensor *X, Tensor *y);
-float grad_norm(Weights *grad, int layers);
+void batch_mean(Tensor *in, Tensor *out, int n);
 void step_adamw(Tensor *w, Tensor *g, Tensor *m, Tensor *v, float beta1, float beta2, float b1t, float b2t, float lambda, float eta, float eps, float scale);
 float cosine_lr(int t, int n_warmup, int n_decay, float max_lr, float min_lr);
+float grad_norm(Weights *grad, int layers);
 
 #endif

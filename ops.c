@@ -3,7 +3,6 @@
 #include <math.h>
 #include <float.h>
 #include <string.h>
-#include "utils.h"
 #include "struct.h"
 
 #define BROADCAST_OP(name, op) \
@@ -280,8 +279,7 @@ void rms(Tensor *in, Tensor *safevar, Tensor *out, float eps) {
     }
 }
 
-void batch_mean(Tensor *in, Tensor *out) {
-    memset(out->data, 0, tsizeof(out));
+void batch_mean(Tensor *in, Tensor *out, int n) {
     int s = 1;
     for (int i = 3; i >= 0; i--) {
         if (in->shape[i] != out->shape[i]) break;
@@ -289,10 +287,9 @@ void batch_mean(Tensor *in, Tensor *out) {
     }
     FOR_ROWS(in) {
         for (int col = 0; col < in->shape[3]; col++) {
-            out->data[base % s + col] += in->data[base + col];
+            out->data[base % s + col] += in->data[base + col] / n;
         }
     }
-    mscal(out, 1.0f * s / tsize(in), out);
 }
 
 void soft_grad(Tensor *dS, Tensor *S, Tensor *out) {
