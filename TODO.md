@@ -5,9 +5,9 @@
 - [x] numerical gradient checking
 - [ ] cppify before overcommitted
 - [x] clip gradients
-- [ ] adamw
+- [x] adamw
 - [ ] generalize weight tying (its jank right now)
-- [ ] lr schedule
+- [x] lr schedule
 - [ ] gradient accumulation + batching
 - [ ] gradient checkpointing
 - [ ] get some training data

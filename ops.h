@@ -32,5 +32,6 @@ uint32_t mueller(uint32_t x);
 float crossentropy(Tensor *X, Tensor *y);
 float grad_norm(Weights *grad, int layers);
 void step_adamw(Tensor *w, Tensor *g, Tensor *m, Tensor *v, float beta1, float beta2, float b1t, float b2t, float lambda, float eta, float eps, float scale);
+float cosine_lr(int t, int n_warmup, int n_decay, float max_lr, float min_lr);
 
 #endif
