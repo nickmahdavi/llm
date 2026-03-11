@@ -14,6 +14,7 @@ Pool *pinit(char *chunk, size_t nbytes) {
     pool->data = (char *)aligned;
     pool->size = nbytes - (pool->data - chunk);
     pool->off = 0;
+    pool->base = chunk;
     return pool;
 }
 
@@ -185,11 +186,4 @@ void proj_heads(Tensor *x, Tensor *y, Tensor *out, int nheads, Pool *pool) {
 void concat_heads(Tensor *in, Tensor *out, Pool *pool) {
     transpose(in, out, (int[]) {0, 2, 1, 3}, pool);
     reshape(out, -1, 1, out->shape[1], out->shape[2] * out->shape[3]);
-}
-
-void tprint(Tensor *in) {
-    for (int i = 0; i < tsize(in); i++) {
-        printf("%f ", in->data[i]);
-    }
-    printf("\n\n");
 }

@@ -7,6 +7,7 @@
 
 typedef struct {
     char *data;
+    char *base;
     size_t size;
     size_t off;
 } Pool;
@@ -15,26 +16,6 @@ Pool *pinit(char *chunk, size_t nbytes);
 void *palloc(Pool *pool, size_t n_bytes);
 size_t pmark(Pool *pool);
 void prollback(Pool *pool, size_t index);
-
-
-// Iterate through corpus.
-// Go one byte at a time, 2-wide; use byte val as id.
-// For each token:
-//    - Link to the adjacent tokens.
-// For each pair:
-//    - Add the head to the hash if it's not there.
-//    - Link to the adjacent pairs.
-//    - Bump the count.
-// Heapify.
-// While vocab left:
-//    - Get max.
-//    - Create new pair token.
-//    - For every left, check right. If there:
-//        - Bump new count
-//        - Decrement neighbor pair counts
-//        - Unlink from adjacent tokens
-//        - Unlink from pair lists
-//    - Reheapify
 
 typedef struct Token Token;
 struct Token {
@@ -151,7 +132,7 @@ typedef struct {
 } DecoderActivations;
 
 typedef struct {
-    Tensor token_emb, pos_emb;
+    Tensor token_emb, pos_emb, token_unemb;
     DecoderWeights *layers;
     RMSWeights last_rms;
 } Weights;

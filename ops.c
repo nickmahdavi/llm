@@ -1,7 +1,9 @@
+#include <assert.h>
 #include <stdlib.h>
 #include <math.h>
 #include <float.h>
 #include <string.h>
+#include "utils.h"
 #include "struct.h"
 
 #define BROADCAST_OP(name, op) \
@@ -64,6 +66,7 @@ uint32_t mueller(uint32_t x) {
 }
 
 void matmul(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out) {
+    assert(x->shape[3] == y->shape[2] && out->shape[2] == x->shape[2] && out->shape[3] == y->shape[3] && "matmul shape mismatch");
     int xbatch = x->shape[0] * x->shape[1];
     int ybatch = y->shape[0] * y->shape[1];
     int y_do_batch = (ybatch != 1);
@@ -102,6 +105,7 @@ void matmul(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out) {
 }
 
 void matmul_at(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out) {
+    assert(x->shape[2] == y->shape[2] && out->shape[2] == x->shape[3] && out->shape[3] == y->shape[3] && "matmul_at shape mismatch");
     int xbatch = x->shape[0] * x->shape[1];
     int ybatch = y->shape[0] * y->shape[1];
     int y_do_batch = (ybatch != 1);
@@ -140,6 +144,7 @@ void matmul_at(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out) {
 }
 
 void matmul_bt(Tensor *restrict x, Tensor *restrict y, Tensor *restrict out) {
+    assert(x->shape[3] == y->shape[3] && out->shape[2] == x->shape[2] && out->shape[3] == y->shape[2] && "matmul_bt shape mismatch");
     int xbatch = x->shape[0] * x->shape[1];
     int ybatch = y->shape[0] * y->shape[1];
     int y_do_batch = (ybatch != 1);
@@ -305,7 +310,7 @@ void rms_grad(Tensor *dX, Tensor *safevar, Tensor *X, Tensor *out) {
         }
         acc /= X->shape[3];
         for (int col = 0; col < dX->shape[3]; col++) {
-            out->data[base + col] = var * (dX->data[base + col] - acc);
+            out->data[base + col] = var * (dX->data[base + col] - X->data[base + col] * acc);
         }
     }
 }

@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include "struct.h"
@@ -48,22 +49,41 @@ void decoder(Tensor **in, DecoderWeights *weights, DecoderActivations *acts, Con
 }
 
 void unembedding(Tensor *in, Tensor *out, Tensor *WE, Config *config) {
-    size_t off = pmark(config->pool);
-    Tensor *WU = palloct(config->pool, DIMS(WE));
-    transpose(WE, WU, (int[]){0, 1, 3, 2}, config->pool);
-    matmul(in, WU, out);
-    prollback(config->pool, off);
+    matmul(in, WE, out);
+}
+
+void forward_from(int layer, Tensor *in, Weights *weights, Activations *acts, Config *config) {
+    Tensor *ptr;
+
+    if (layer == 0 || layer == 1) {
+        ptr = &acts->model_in;
+        embedding(in, ptr, &weights->token_emb, &weights->pos_emb);
+        layer = 1;
+    } else if (layer <= config->nlayers + 1) {
+        ptr = &acts->layers[layer - 2].res2;
+    }
+
+    for (; layer <= config->nlayers; layer++) {
+        DecoderWeights *d_weights = &weights->layers[layer - 1];
+        DecoderActivations *d_acts = &acts->layers[layer - 1];
+        decoder(&ptr, d_weights, d_acts, config);
+    }
+
+    if (layer == config->nlayers + 1) {
+        rmsnorm(ptr, &acts->model_out, &weights->last_rms, &acts->last_rms, config);
+        layer++;
+    }
+
+    if (layer == config->nlayers + 2) {
+        unembedding(&acts->model_out, &acts->logits, &weights->token_unemb, config);
+        layer++;
+    }
+
+    if (layer == config->nlayers + 3) {
+        softmax(&acts->logits, &acts->probs);
+    }
 }
 
 void forward(Tensor *in, Weights *weights, Activations *acts, Config *config) {
-    Tensor *ptr = &acts->model_in;
-    embedding(in, ptr, &weights->token_emb, &weights->pos_emb);
-    for (int i = 0; i < config->nlayers; i++) {
-        DecoderWeights *d_weights = &weights->layers[i];
-        DecoderActivations *d_acts = &acts->layers[i];
-        decoder(&ptr, d_weights, d_acts, config);
-    }
-    rmsnorm(ptr, &acts->model_out, &weights->last_rms, &acts->last_rms, config);
-    unembedding(&acts->model_out, &acts->logits, &weights->token_emb, config);
-    softmax(&acts->logits, &acts->probs);
+    forward_from(0, in, weights, acts, config);
 }

@@ -1,5 +1,6 @@
 #include <string.h>
 #include <math.h>
+#include <stdio.h>
 #include "struct.h"
 #include "ops.h"
 
@@ -14,6 +15,7 @@ void unembedding_back(Tensor *grad_in, Tensor *grad_out, Tensor *X, Tensor *WU, 
     matmul_at(X, grad_in, grad_acc_WU);
     batch_mean(grad_acc_WU, WU_grad);
     matmul_bt(grad_in, WU, grad_out);
+    mscal(WU_grad, 1.0f / grad_in->shape[2], WU_grad);
 
     prollback(config->pool, off);
 }
@@ -22,22 +24,25 @@ void ff_back(Tensor *grad_in, Tensor *grad_out, FFActivations *acts, FFWeights *
     size_t off = pmark(config->pool);
 
     Tensor *dG = palloct(config->pool, DIMS(&acts->hg));
+    Tensor *dH = palloct(config->pool, DIMS(&acts->h));
+
     #define BDIMS(t) acts->h.shape[0], (t)->shape[1], (t)->shape[2], (t)->shape[3]
     Tensor *grad_acc_W1 = palloct(config->pool, BDIMS(&weights->W1));
     Tensor *grad_acc_W2 = palloct(config->pool, BDIMS(&weights->W2));
-    Tensor *grad_acc_b1 = palloct(config->pool, BDIMS(&weights->b1));
     #undef BDIMS
 
     matmul_at(&acts->hg, grad_in, grad_acc_W2);
     matmul_bt(grad_in, &weights->W2, dG);
-    gelu_grad(dG, &acts->h, grad_acc_b1);
-    matmul_at(&acts->X, grad_acc_b1, grad_acc_W1);
-    matmul_bt(grad_acc_b1, &weights->W1, grad_out);
+    gelu_grad(dG, &acts->h, dH);
+    matmul_at(&acts->X, dH, grad_acc_W1);
+    matmul_bt(dH, &weights->W1, grad_out);
 
     batch_mean(grad_in, &updates->b2);
     batch_mean(grad_acc_W2, &updates->W2);
-    batch_mean(grad_acc_b1, &updates->b1);
+    mscal(&updates->W2, 1.0f / grad_in->shape[2], &updates->W2);
+    batch_mean(dH, &updates->b1);
     batch_mean(grad_acc_W1, &updates->W1);
+    mscal(&updates->W1, 1.0f / grad_in->shape[2], &updates->W1);
 
     prollback(config->pool, off);
 }
@@ -91,6 +96,11 @@ void attention_back(Tensor *grad_in, Tensor *grad_out, AttnActivations *acts, At
     batch_mean(grad_acc_WK, &updates->WK);
     batch_mean(grad_acc_WV, &updates->WV);
 
+    mscal(&updates->WO, 1.0f / grad_in->shape[2], &updates->WO);
+    mscal(&updates->WQ, 1.0f / grad_in->shape[2], &updates->WQ);
+    mscal(&updates->WK, 1.0f / grad_in->shape[2], &updates->WK);
+    mscal(&updates->WV, 1.0f / grad_in->shape[2], &updates->WV);
+
     madd(dXQ, dXK, grad_out);
     madd(grad_out, dXV, grad_out);
 
@@ -117,14 +127,15 @@ void decoder_back(Tensor *grad_in, Tensor *grad_out, DecoderActivations *acts, D
     
     Tensor *t1 = palloct(config->pool, DIMS(grad_in));
     Tensor *t2 = palloct(config->pool, DIMS(grad_in));
+    Tensor *res_grad = palloct(config->pool, DIMS(grad_in));
 
     ff_back(grad_in, t1, &acts->ff, &weights->ff, &updates->ff, config);
     rms_back(t1, t2, &acts->rms2, &weights->rms2, &updates->rms2, config);
-    madd(grad_in, t2, grad_in);
+    madd(grad_in, t2, res_grad);
 
-    attention_back(grad_in, t1, &acts->attn, &weights->attn, &updates->attn, config);
+    attention_back(res_grad, t1, &acts->attn, &weights->attn, &updates->attn, config);
     rms_back(t1, t2, &acts->rms1, &weights->rms1, &updates->rms1, config);
-    madd(grad_in, t2, grad_out);
+    madd(res_grad, t2, grad_out);
 
     prollback(config->pool, off);
 }
@@ -137,6 +148,8 @@ void embedding_back(Tensor *grad_in, Tensor *X, Tensor *WE_grad, Tensor *WP_grad
     matmul_at(X, grad_in, grad_acc_WE);
     batch_mean(grad_acc_WE, WE_grad);
     batch_mean(grad_in, WP_grad);
+    mscal(WE_grad, 1.0f / grad_in->shape[2], WE_grad);
+    mscal(WP_grad, 1.0f / grad_in->shape[2], WP_grad);
 
     prollback(config->pool, off);
 }
@@ -144,23 +157,15 @@ void embedding_back(Tensor *grad_in, Tensor *X, Tensor *WE_grad, Tensor *WP_grad
 void backpropagate(Tensor *in, Tensor *labels, Activations *acts, Weights *weights, Weights *grad, Config *config) {
     size_t off = pmark(config->pool);
 
-    float eta = config->learning_rate;
-
     Tensor *t0 = palloct(config->pool, in->shape[0], 1, in->shape[2], config->nvocab);
     Tensor *t1 = palloct(config->pool, in->shape[0], 1, in->shape[2], config->dmodel);
     Tensor *t2 = palloct(config->pool, in->shape[0], 1, in->shape[2], config->dmodel);
 
     logits_back(&acts->probs, labels, t0);
 
-    Tensor *WU = palloct(config->pool, DIMS(&weights->token_emb));
-    transpose(&weights->token_emb, WU, (int[]){0, 1, 3, 2}, config->pool);
-    Tensor *dWU = palloct(config->pool, DIMS(WU));
-    unembedding_back(t0, t1, &acts->model_out, WU, dWU, config);
-    transpose(dWU, dWU, (int[]){0, 1, 3, 2}, config->pool);
-    step(&weights->token_emb, dWU, eta);
+    unembedding_back(t0, t1, &acts->model_out, &weights->token_unemb, &grad->token_unemb, config);
 
     rms_back(t1, t2, &acts->last_rms, &weights->last_rms, &grad->last_rms, config);
-    step(&weights->last_rms.gamma, &grad->last_rms.gamma, eta);
 
     Tensor **grad_in = &t2;
     Tensor **grad_out = &t1;
@@ -173,7 +178,26 @@ void backpropagate(Tensor *in, Tensor *labels, Activations *acts, Weights *weigh
 
         decoder_back(*grad_in, *grad_out, d_acts, d_weights, d_grad, config);
 
-        #define STEP(fld, t) step(&d_weights->fld.t, &d_grad->fld.t, eta)
+        tmp = grad_in;
+        grad_in = grad_out;
+        grad_out = tmp;
+    }
+
+    embedding_back(*grad_in, in, &grad->token_emb, &grad->pos_emb, config);
+
+    prollback(config->pool, off);
+}
+
+void update(Weights *weights, Weights *grad, Config *config) {
+    float eta = config->learning_rate;
+
+    step(&weights->last_rms.gamma, &grad->last_rms.gamma, eta);
+
+    #define STEP(fld, t) step(&d_weights->fld.t, &d_grad->fld.t, eta)
+    for (int i = config->nlayers - 1; i >= 0; i--) {
+        DecoderWeights *d_weights = &weights->layers[i];
+        DecoderWeights *d_grad = &grad->layers[i];
+
         STEP(attn, WQ);
         STEP(attn, WK);
         STEP(attn, WV);
@@ -184,16 +208,10 @@ void backpropagate(Tensor *in, Tensor *labels, Activations *acts, Weights *weigh
         STEP(ff, W2);
         STEP(rms1, gamma);
         STEP(rms2, gamma);
-        #undef STEP
-
-        tmp = grad_in;
-        grad_in = grad_out;
-        grad_out = tmp;
     }
+    #undef STEP
 
-    embedding_back(*grad_in, in, &grad->token_emb, &grad->pos_emb, config);
     step(&weights->pos_emb, &grad->pos_emb, eta);
     step(&weights->token_emb, &grad->token_emb, eta);
-
-    prollback(config->pool, off);
+    step(&weights->token_unemb, &grad->token_unemb, eta);
 }

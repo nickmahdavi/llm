@@ -5,5 +5,6 @@
 
 Activations *init_acts(Config *config);
 Weights *init_weights(Config *config);
+Weights *init_gradient_checker(int n, Config *config);
 
 #endif

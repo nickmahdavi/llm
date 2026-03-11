@@ -86,11 +86,30 @@ Weights *init_weights(Config *config) {
 
     INIT_W(token_emb, 1, 1, v, d, NORMAL);
     INIT_W(pos_emb, 1, 1, s, d, NORMAL);
+    INIT_W(token_unemb, 1, 1, d, v, NORMAL);
     for (int i = 0; i < config->nlayers; i++) {
         DecoderWeights *d_weights = &weights->layers[i];
         init_decoder_weights(d_weights, config);
     }
     init_rms_weights(&weights->last_rms, config);
+    return weights;
+}
+
+Weights *init_gradient_checker(int n, Config *config) {
+    Weights *weights = palloc(config->pool, sizeof(Weights));
+    weights->layers = palloc(config->pool, config->nlayers * sizeof(DecoderWeights));
+
+    INIT_W(token_emb, 1, 1, n, 3, NONE);
+    INIT_W(pos_emb, 1, 1, n, 3, NONE);
+    INIT_W(token_unemb, 1, 1, n, 3, NONE);
+
+    for (int i = 0; i < config->nlayers * 10; i++) {
+        Tensor *t = (Tensor *)(weights->layers) + i;
+        tinit(config->pool, t, 1, 1, n, 3, NONE);
+    }
+
+    tinit(config->pool, &weights->last_rms.gamma, 1, 1, n, 3, NONE);
+
     return weights;
 }
 
