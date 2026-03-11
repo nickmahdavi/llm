@@ -188,29 +188,8 @@ void backpropagate(Tensor *in, Tensor *labels, Activations *acts, Weights *weigh
 }
 
 void update(Weights *weights, Weights *grad, Config *config) {
-    float eta = config->learning_rate * fminf(1.0f, config->max_norm / grad_norm(grad, config->nlayers));
-
-    step(&weights->last_rms.gamma, &grad->last_rms.gamma, eta);
-
-    #define STEP(fld, t) step(&d_weights->fld.t, &d_grad->fld.t, eta)
-    for (int i = config->nlayers - 1; i >= 0; i--) {
-        DecoderWeights *d_weights = &weights->layers[i];
-        DecoderWeights *d_grad = &grad->layers[i];
-
-        STEP(attn, WQ);
-        STEP(attn, WK);
-        STEP(attn, WV);
-        STEP(attn, WO);
-        STEP(ff, b1);
-        STEP(ff, b2);
-        STEP(ff, W1);
-        STEP(ff, W2);
-        STEP(rms1, gamma);
-        STEP(rms2, gamma);
-    }
+    float eta = config->eta * fminf(1.0f, config->max_norm / grad_norm(grad, config->nlayers));
+    #define STEP(fld) step(&weights->fld, &grad->fld, eta);
+    FOR_WEIGHTS(STEP, config->nlayers);
     #undef STEP
-
-    step(&weights->pos_emb, &grad->pos_emb, eta);
-    step(&weights->token_emb, &grad->token_emb, eta);
-    step(&weights->token_unemb, &grad->token_unemb, eta);
 }

@@ -5,6 +5,25 @@
 
 #define DIMS(t) (t)->shape[0], (t)->shape[1], (t)->shape[2], (t)->shape[3]
 
+#define FOR_WEIGHTS(macro, n) \
+    macro(token_emb); \
+    macro(pos_emb); \
+    for (int macro##_i = 0; macro##_i < n; macro##_i++) { \
+        macro(layers[macro##_i].attn.WQ); \
+        macro(layers[macro##_i].attn.WK); \
+        macro(layers[macro##_i].attn.WV); \
+        macro(layers[macro##_i].attn.WO); \
+        macro(layers[macro##_i].ff.b1); \
+        macro(layers[macro##_i].ff.W1); \
+        macro(layers[macro##_i].ff.b2); \
+        macro(layers[macro##_i].ff.W2); \
+        macro(layers[macro##_i].rms1.gamma); \
+        macro(layers[macro##_i].rms2.gamma); \
+    } \
+    macro(last_rms.gamma); \
+    macro(token_unemb); \
+
+
 typedef struct {
     char *data;
     char *base;
@@ -145,7 +164,7 @@ typedef struct {
 
 typedef struct {
     int max_batch, max_seq, nvocab, nheads, dmodel, dff, nlayers;
-    float eps, learning_rate, max_norm;
+    float eps, eta, beta1, beta2, lambda, max_norm;
     Pool *pool;
 } Config;
 

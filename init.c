@@ -99,16 +99,9 @@ Weights *init_gradient_checker(int n, Config *config) {
     Weights *weights = palloc(config->pool, sizeof(Weights));
     weights->layers = palloc(config->pool, config->nlayers * sizeof(DecoderWeights));
 
-    INIT_W(token_emb, 1, 1, n, 3, NONE);
-    INIT_W(pos_emb, 1, 1, n, 3, NONE);
-    INIT_W(token_unemb, 1, 1, n, 3, NONE);
-
-    for (int i = 0; i < config->nlayers * 10; i++) {
-        Tensor *t = (Tensor *)(weights->layers) + i;
-        tinit(config->pool, t, 1, 1, n, 3, NONE);
-    }
-
-    tinit(config->pool, &weights->last_rms.gamma, 1, 1, n, 3, NONE);
+    #define GC(fld) INIT_W(fld, 1, 1, n, 3, NONE)
+    FOR_WEIGHTS(GC, config->nlayers);
+    #undef GC
 
     return weights;
 }

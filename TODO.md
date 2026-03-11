@@ -4,7 +4,7 @@
 - [x] separate steps from backwards pass
 - [x] numerical gradient checking
 - [ ] cppify before overcommitted
-- [ ] clip gradients
+- [x] clip gradients
 - [ ] adamw
 - [ ] generalize weight tying (its jank right now)
 - [ ] lr schedule

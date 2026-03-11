@@ -333,22 +333,8 @@ static inline float sqacc(Tensor *t) {
 
 float grad_norm(Weights *grad, int layers) {
     float acc = 0;
-    acc += sqacc(&grad->token_emb);
-    acc += sqacc(&grad->pos_emb);
-    for (int i = 0; i < layers; i++) {
-        DecoderWeights dgrad = grad->layers[i];
-        acc += sqacc(&dgrad.attn.WQ);
-        acc += sqacc(&dgrad.attn.WK);
-        acc += sqacc(&dgrad.attn.WV);
-        acc += sqacc(&dgrad.attn.WO);
-        acc += sqacc(&dgrad.ff.b1);
-        acc += sqacc(&dgrad.ff.W1);
-        acc += sqacc(&dgrad.ff.b2);
-        acc += sqacc(&dgrad.ff.W2);
-        acc += sqacc(&dgrad.rms1.gamma);
-        acc += sqacc(&dgrad.rms2.gamma);
-    }
-    acc += sqacc(&grad->last_rms.gamma);
-    acc += sqacc(&grad->token_unemb);
+    #define ACC(fld) acc += sqacc(&grad->fld);
+    FOR_WEIGHTS(ACC, layers);
+    #undef ACC
     return powf(acc, 0.5f);
 }

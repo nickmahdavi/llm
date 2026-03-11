@@ -19,7 +19,7 @@ void get_perturbations(size_t max, size_t *indices, int n) {
     }
 }
 
-void test_gradient(Tensor *results, int layer, Tensor *in, Tensor *w, Tensor *wgrad, Tensor *labels, Activations *acts, Weights *weights, Config *config) {
+void test_gradient(Tensor *results, Tensor *in, Tensor *w, Tensor *wgrad, Tensor *labels, Activations *acts, Weights *weights, Config *config) {
     // w should point into weights
     int n = results->shape[2];
     size_t indices[n];
@@ -27,10 +27,10 @@ void test_gradient(Tensor *results, int layer, Tensor *in, Tensor *w, Tensor *wg
     for (int i = 0; i < n; i++) {
         float s = w->data[indices[i]];
         w->data[indices[i]] = s + FD_EPS;
-        forward_from(layer, in, weights, acts, config);
+        forward(in, weights, acts, config);
         float a = crossentropy(&acts->probs, labels);
         w->data[indices[i]] = s - FD_EPS;
-        forward_from(layer, in, weights, acts, config);
+        forward(in, weights, acts, config);
         a -= crossentropy(&acts->probs, labels);
         a /= 2 * FD_EPS;
         w->data[indices[i]] = s;
@@ -43,30 +43,11 @@ void test_gradient(Tensor *results, int layer, Tensor *in, Tensor *w, Tensor *wg
 }
 
 void check_gradients(Weights *results, Tensor *in, Tensor *labels, Activations *acts, Weights *weights, Weights *grad, Config *config) {
-    #define TEST(l, fld) test_gradient(&results->fld, l, in, &weights->fld, &grad->fld, labels, acts, weights, config)
-
     // results should be (config->nlayers + 2) x n x 3
 
     backpropagate(in, labels, acts, weights, grad, config);
 
-    TEST(config->nlayers + 2, token_unemb);
-    TEST(config->nlayers + 1, last_rms.gamma);
-
-    for (int i = config->nlayers; i > 0; i--) {
-        TEST(i, layers[i - 1].attn.WQ);
-        TEST(i, layers[i - 1].attn.WK);
-        TEST(i, layers[i - 1].attn.WV);
-        TEST(i, layers[i - 1].attn.WO);
-        TEST(i, layers[i - 1].ff.b1);
-        TEST(i, layers[i - 1].ff.b2);
-        TEST(i, layers[i - 1].ff.W1);
-        TEST(i, layers[i - 1].ff.W2);
-        TEST(i, layers[i - 1].rms1.gamma);
-        TEST(i, layers[i - 1].rms2.gamma);
-    }
-
-    TEST(0, pos_emb);
-    TEST(0, token_emb);
-
+    #define TEST(fld) test_gradient(&results->fld, in, &weights->fld, &grad->fld, labels, acts, weights, config)
+    FOR_WEIGHTS(TEST, config->nlayers);
     #undef TEST
 }
