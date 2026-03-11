@@ -30,5 +30,6 @@ void rms(Tensor *in, Tensor *safevar, Tensor *out, float eps);
 size_t round_up_pow2(size_t n);
 uint32_t mueller(uint32_t x);
 float crossentropy(Tensor *X, Tensor *y);
+float grad_norm(Weights *grad, int layers)
 
 #endif

@@ -1,6 +1,5 @@
 #include <string.h>
 #include <math.h>
-#include <stdio.h>
 #include "struct.h"
 #include "ops.h"
 
@@ -189,7 +188,7 @@ void backpropagate(Tensor *in, Tensor *labels, Activations *acts, Weights *weigh
 }
 
 void update(Weights *weights, Weights *grad, Config *config) {
-    float eta = config->learning_rate;
+    float eta = config->learning_rate * fminf(1.0f, config->max_norm / grad_norm(grad, config->nlayers));
 
     step(&weights->last_rms.gamma, &grad->last_rms.gamma, eta);
 

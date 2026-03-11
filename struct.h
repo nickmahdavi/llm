@@ -145,7 +145,7 @@ typedef struct {
 
 typedef struct {
     int max_batch, max_seq, nvocab, nheads, dmodel, dff, nlayers;
-    float eps, learning_rate;
+    float eps, learning_rate, max_norm;
     Pool *pool;
 } Config;
 
