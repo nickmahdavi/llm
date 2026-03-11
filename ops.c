@@ -33,14 +33,29 @@ static inline int base_idx(Tensor *t, int i, int j, int k) {
     return i * t->shape[1] * t->shape[2] * t->shape[3] + j * t->shape[2] * t->shape[3] + k * t->shape[3];
 }
 
-void mscal(Tensor *x, float s, Tensor *out) {
-    for (size_t i = 0; i < tsize(x); i++)
-        out->data[i] = x->data[i] * s;
+void mscal(Tensor *t, float s, Tensor *out) {
+    for (size_t i = 0; i < tsize(t); i++) {
+        out->data[i] = t->data[i] * s;
+    }
 }
 
-void step(Tensor *x, Tensor *grad, float eta) {
-    for (size_t i = 0; i < tsize(x); i++) \
-        x->data[i] -= grad->data[i] * eta;
+void step(Tensor *t, Tensor *grad, float eta) {
+    for (size_t i = 0; i < tsize(t); i++) {
+        t->data[i] -= grad->data[i] * eta;
+    }
+}
+
+void step_adamw(Tensor *w, Tensor *g, Tensor *m, Tensor *v, float beta1, float beta2, float b1t, float b2t, float lambda, float eta, float eps, float scale) {
+    for (int i = 0; i < tsize(w); i++) {
+        float gs = g->data[i] * scale;
+        float mt = m->data[i] * beta1 + gs * (1 - beta1);
+        float vt = v->data[i] * beta2 + gs * gs * (1 - beta2);
+        float mh = mt / (1 - b1t);
+        float vh = vt / (1 - b2t);
+        m->data[i] = mt;
+        v->data[i] = vt;
+        w->data[i] -= eta * (mh / sqrtf(vh + eps) + lambda * w->data[i]);
+    }
 }
 
 size_t round_up_pow2(size_t n) {

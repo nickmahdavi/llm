@@ -193,3 +193,13 @@ void update(Weights *weights, Weights *grad, Config *config) {
     FOR_WEIGHTS(STEP, config->nlayers);
     #undef STEP
 }
+
+void adamw(int t, Weights *weights, Weights *grad, Weights *m, Weights *v, Config *config) {
+    float scale = fminf(1.0f, config->max_norm / grad_norm(grad, config->nlayers));
+    float b1t = powf(config->beta1, (float)t);
+    float b2t = powf(config->beta2, (float)t);
+
+    #define STEP(fld) step_adamw(t, &weights->fld, &grad->fld, &m->fld, &v->fld, config->beta1, config->beta2, b1t, b2t, config->lambda, config->eta, config->eps, scale)
+    FOR_WEIGHTS(STEP, config->nlayers);
+    #undef STEP
+}

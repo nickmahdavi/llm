@@ -31,5 +31,6 @@ size_t round_up_pow2(size_t n);
 uint32_t mueller(uint32_t x);
 float crossentropy(Tensor *X, Tensor *y);
 float grad_norm(Weights *grad, int layers);
+void step_adamw(Tensor *w, Tensor *g, Tensor *m, Tensor *v, float beta1, float beta2, float b1t, float b2t, float lambda, float eta, float eps, float scale);
 
 #endif

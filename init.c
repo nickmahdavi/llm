@@ -95,6 +95,15 @@ Weights *init_weights(Config *config) {
     return weights;
 }
 
+Weights *init_copy_zeros(Weights *ex, Config *config) {
+    Weights *weights = palloc(config->pool, sizeof(Weights));
+    weights->layers = palloc(config->pool, config->nlayers * sizeof(DecoderWeights));
+    #define _COPY(fld, ...) INIT_W(fld, __VA_ARGS__, ZERO)
+    #define COPY(fld) _COPY(fld, DIMS(&ex->fld))
+    FOR_WEIGHTS(COPY, config->nlayers);
+    return weights;
+}
+
 Weights *init_gradient_checker(int n, Config *config) {
     Weights *weights = palloc(config->pool, sizeof(Weights));
     weights->layers = palloc(config->pool, config->nlayers * sizeof(DecoderWeights));
