@@ -1,11 +1,17 @@
-#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include "struct.h"
 #include "ops.h"
 
 void embedding(Tensor *in, Tensor *out, Tensor *WE, Tensor *WP) {
-    matmul(in, WE, out);
+    memset(out->data, 0, tsizeof(out));
+    FOR_ROWS(out) {
+        int v = in->data[i * out->shape[2] + k];
+        for (int col = 0; col < out->shape[3]; col++) {
+            out->data[base + col] = WE->data[v * out->shape[3] + col];
+        }
+    }
     madd(out, WP, out);
 }
 

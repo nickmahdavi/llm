@@ -6,7 +6,11 @@
 #define BS (grad_in->shape[0] * grad_in->shape[2])
 
 void logits_back(Tensor *logits, Tensor *labels, Tensor *grad_out) {
-    msub(logits, labels, grad_out);
+    memcpy(grad_out->data, logits->data, tsizeof(logits));
+    FOR_ROWS(grad_out) {
+        int v = labels->data[i * grad_out->shape[2] + k];
+        grad_out->data[base + v] -= 1.0f;
+    }
 }
 
 void unembedding_back(Tensor *grad_in, Tensor *grad_out, Tensor *X, Tensor *WU, Tensor *WU_grad, Config *config) {
@@ -138,7 +142,20 @@ void embedding_back(Tensor *grad_in, Tensor *X, Tensor *WE_grad, Tensor *WP_grad
 
     Tensor *grad_acc_WE = palloct(config->pool, X->shape[0], WE_grad->shape[1], WE_grad->shape[2], WE_grad->shape[3]);
 
-    matmul_at(X, grad_in, grad_acc_WE);
+    memset(grad_acc_WE->data, 0, tsizeof(grad_acc_WE));
+
+    for (int b = 0; b < X->shape[0]; b++) {
+        for (int s = 0; s < X->shape[2]; s++) {
+            // for token x at position y, add a copy of row y to row x
+            int tok = X->data[b * X->shape[2] + s];
+            int base_grad_in = b * grad_in->shape[2] * grad_in->shape[3] + s * grad_in->shape[3];
+            int base_grad_we = b * grad_acc_WE->shape[2] * grad_acc_WE->shape[3] + tok * grad_acc_WE->shape[3];
+            for (int col = 0; col < grad_in->shape[3]; col++) {
+                grad_acc_WE->data[base_grad_we + col] += grad_in->data[base_grad_in + col];
+            }
+        }
+    }
+
     batch_mean(grad_acc_WE, WE_grad, BS);
     batch_mean(grad_in, WP_grad, BS);
 
@@ -148,9 +165,9 @@ void embedding_back(Tensor *grad_in, Tensor *X, Tensor *WE_grad, Tensor *WP_grad
 void backpropagate(Tensor *in, Tensor *labels, Activations *acts, Weights *weights, Weights *grad, Config *config) {
     size_t off = pmark(config->pool);
 
-    Tensor *t0 = palloct(config->pool, in->shape[0], 1, in->shape[2], config->nvocab);
-    Tensor *t1 = palloct(config->pool, in->shape[0], 1, in->shape[2], config->dmodel);
-    Tensor *t2 = palloct(config->pool, in->shape[0], 1, in->shape[2], config->dmodel);
+    Tensor *t0 = palloct(config->pool, in->shape[0], 1, config->max_seq, config->nvocab);
+    Tensor *t1 = palloct(config->pool, in->shape[0], 1, config->max_seq, config->dmodel);
+    Tensor *t2 = palloct(config->pool, in->shape[0], 1, config->max_seq, config->dmodel);
 
     logits_back(&acts->probs, labels, t0);
 

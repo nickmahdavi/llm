@@ -4,6 +4,7 @@
 #include <float.h>
 #include <string.h>
 #include "struct.h"
+#include "ops.h"
 
 #define BROADCAST_OP(name, op) \
 void name(Tensor *x, Tensor *y, Tensor *out) { \
@@ -21,16 +22,6 @@ void name(Tensor *x, Tensor *y, Tensor *out) { \
 BROADCAST_OP(madd, +)
 BROADCAST_OP(msub, -)
 BROADCAST_OP(mmult, *)
-
-#define FOR_ROWS(t) \
-    for (int i = 0; i < (t)->shape[0]; i++) \
-        for (int j = 0; j < (t)->shape[1]; j++) \
-            for (int k = 0; k < (t)->shape[2]; k++) \
-                 for (int base = base_idx(t, i, j, k), _done = 0; !_done; _done = 1)
-
-static inline int base_idx(Tensor *t, int i, int j, int k) {
-    return i * t->shape[1] * t->shape[2] * t->shape[3] + j * t->shape[2] * t->shape[3] + k * t->shape[3];
-}
 
 void mscal(Tensor *t, float s, Tensor *out) {
     for (size_t i = 0; i < tsize(t); i++) {
@@ -337,9 +328,8 @@ void rms_grad(Tensor *dX, Tensor *safevar, Tensor *X, Tensor *out) {
 float crossentropy(Tensor *X, Tensor *y) {
     float loss = 0;
     FOR_ROWS(X) {
-        int col = -1;
-        while (y->data[base + ++col] == 0);
-        loss -= logf(X->data[base + col] + 1e-06);
+        int tok = (int)y->data[i * X->shape[2] + k];
+        loss -= logf(X->data[base + tok] + 1e-06);
     }
     return loss / (X->shape[0] * X->shape[1] * X->shape[2]);
 }
